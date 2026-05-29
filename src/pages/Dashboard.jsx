@@ -118,10 +118,24 @@ export default function Dashboard() {
   };
 
   // Intercept data packet submission request
+// Intercept data packet submission request
   const handleSaveClickAttempt = (e) => {
     e.preventDefault();
     if (!selectedClass || !subject || !round || !total) {
       alert("Please fill all configuration parameters before saving records.");
+      return;
+    }
+
+    // =========================================================================
+    // STRICT SUBJECT VALIDATION: Block invalid or misspelled subjects
+    // =========================================================================
+    const currentSubjectUpper = subject.trim().toUpperCase();
+    const isValidSubject = predefinedSubjects.some(
+      (sub) => sub.toUpperCase() === currentSubjectUpper
+    );
+
+    if (!isValidSubject) {
+      alert("❌ Invalid Subject! Please type and select exactly from the suggested list. Spelling mistakes or new subjects are not allowed.");
       return;
     }
 
