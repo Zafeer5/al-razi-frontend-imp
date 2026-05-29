@@ -16,6 +16,9 @@ export default function Dashboard() {
   const [subject, setSubject] = useState("");
   const [round, setRound] = useState("");
   const [total, setTotal] = useState("");
+  
+  // NAYA STATE: Inline error dikhane ke liye
+  const [subjectError, setSubjectError] = useState("");
 
   const [classStudents, setClassStudents] = useState([]);
   const [marksData, setMarksData] = useState({});
@@ -118,7 +121,6 @@ export default function Dashboard() {
   };
 
   // Intercept data packet submission request
-// Intercept data packet submission request
   const handleSaveClickAttempt = (e) => {
     e.preventDefault();
     if (!selectedClass || !subject || !round || !total) {
@@ -127,7 +129,7 @@ export default function Dashboard() {
     }
 
     // =========================================================================
-    // STRICT SUBJECT VALIDATION: Block invalid or misspelled subjects
+    // STRICT SUBJECT VALIDATION: Block invalid or misspelled subjects (Inline Error)
     // =========================================================================
     const currentSubjectUpper = subject.trim().toUpperCase();
     const isValidSubject = predefinedSubjects.some(
@@ -135,7 +137,8 @@ export default function Dashboard() {
     );
 
     if (!isValidSubject) {
-      alert("❌ Invalid Subject! Please type and select exactly from the suggested list. Spelling mistakes or new subjects are not allowed.");
+      setSubjectError("Please select a valid subject from the list.");
+      setTimeout(() => setSubjectError(""), 3000); // 3 seconds baad khud gayab
       return;
     }
 
@@ -317,20 +320,37 @@ export default function Dashboard() {
               </div>
 
               <div>
-                {/* HTML5 DATALIST IMPLEMENTATION */}
+                {/* HTML5 DATALIST IMPLEMENTATION WITH INLINE ERROR MOCKUP */}
                 <input
                   type="text"
                   list="subject-suggestions"
                   placeholder="SUBJECT"
                   value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="w-full bg-slate-100 text-slate-700 font-semibold placeholder-slate-400 py-3 px-4 rounded-xl border border-transparent focus:border-slate-300 focus:bg-white outline-none uppercase tracking-wider text-sm"
+                  onChange={(e) => {
+                    setSubject(e.target.value);
+                    if (subjectError) setSubjectError(""); // Type karte hi error gayab ho jaye
+                  }}
+                  className={`w-full font-semibold py-3 px-4 rounded-xl border outline-none uppercase tracking-wider text-sm transition-all ${
+                    subjectError
+                      ? "border-red-400 text-red-600 bg-red-50 focus:bg-white"
+                      : "bg-slate-100 text-slate-700 placeholder-slate-400 border-transparent focus:border-slate-300 focus:bg-white"
+                  }`}
                 />
                 <datalist id="subject-suggestions">
                   {predefinedSubjects.map((sub, index) => (
                     <option key={index} value={sub.toUpperCase()} />
                   ))}
                 </datalist>
+
+                {/* INLINE ERROR DISPLAY */}
+                {subjectError && (
+                  <div className="flex items-center space-x-1 mt-1.5 ml-1 animate-fade-in">
+                    <AlertTriangle className="w-3 h-3 text-red-500" />
+                    <p className="text-[10px] text-red-500 font-bold tracking-wide">
+                      {subjectError}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
