@@ -74,23 +74,53 @@ export default function MarksDatabase() {
         ).toFixed(1)
       : 0;
 
-  // Single Record Deletion Handler (Frontend View Only - Backend API baqi hai)
-  const handleDeleteSingle = (id) => {
+  // =========================================================================
+  // DELETE FUNCTIONS (CONNECTED TO LIVE API)
+  // =========================================================================
+  
+  // Single Record Deletion Handler
+  const handleDeleteSingle = async (id) => {
     if (
       window.confirm("Are you sure you want to delete this marks entry record?")
     ) {
-      setMarksRecords(marksRecords.filter((m) => m.id !== id));
+      try {
+        const response = await fetch(`https://al-razi-backend-imp.onrender.com/api/marks/${id}`, {
+          method: "DELETE",
+        });
+        if (response.ok) {
+          // Frontend se record hata dein agar backend se success mil jaye
+          setMarksRecords(marksRecords.filter((m) => m.id !== id));
+        } else {
+          alert("Failed to delete marks from MongoDB.");
+        }
+      } catch (error) {
+        console.error("Delete Error:", error);
+        alert("Server connection failed during deletion.");
+      }
     }
   };
 
-  // Central Database Core Wipe Handler (Frontend View Only)
-  const handleDeleteAll = () => {
+  // Central Database Core Wipe Handler
+  const handleDeleteAll = async () => {
     if (
       window.confirm(
         "CRITICAL: Wipe entire Marks Database history? This action cannot be undone!",
       )
     ) {
-      setMarksRecords([]);
+      try {
+        const response = await fetch("https://al-razi-backend-imp.onrender.com/api/marks", {
+          method: "DELETE",
+        });
+        if (response.ok) {
+           // Frontend state khali kar dein
+          setMarksRecords([]);
+        } else {
+          alert("Failed to wipe marks in MongoDB.");
+        }
+      } catch (error) {
+        console.error("Wipe Error:", error);
+        alert("Server connection failed during wipe.");
+      }
     }
   };
 
@@ -100,7 +130,7 @@ export default function MarksDatabase() {
     setEditObtainedMarks(String(record.obtainedMarks));
   };
 
-  // Commit and Save modified student scores matrix row (Frontend View Only)
+  // Commit and Save modified student scores matrix row (Note: Frontend Only - Update API pending)
   const handleSaveEdit = (record) => {
     const newScore = Number(editObtainedMarks);
 
