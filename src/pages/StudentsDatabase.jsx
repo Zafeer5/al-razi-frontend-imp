@@ -19,11 +19,7 @@ import {
 export default function StudentsDatabase() {
   const navigate = useNavigate();
 
-  // Load state directly from persistent localStorage database
-  const [students, setStudents] = useState(() => {
-    const savedStudents = localStorage.getItem("alRaziStudentsDatabase");
-    return savedStudents ? JSON.parse(savedStudents) : [];
-  });
+ const [students, setStudents] = useState([]);
 
   // Search and Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,22 +28,20 @@ export default function StudentsDatabase() {
   // Inline Editing States
   const [editingId, setEditingId] = useState(null);
   const [editFormData, setEditFormData] = useState({
-    firstName: "",
-    lastName: "",
-    fatherName: "",
-    phone: "",
-    dob: "",
-    class: "",
+    firstName: "", lastName: "", fatherName: "", phone: "", dob: "", class: "",
   });
 
   // Custom Double-Layer Wipe Pop-up Modals States
   const [showWipeModal1, setShowWipeModal1] = useState(false);
   const [showWipeModal2, setShowWipeModal2] = useState(false);
 
-  // Update localStorage automatically whenever any changes occur
+  // Live Data Fetch from Render Backend
   useEffect(() => {
-    localStorage.setItem("alRaziStudentsDatabase", JSON.stringify(students));
-  }, [students]);
+    fetch("https://al-razi-backend-imp.onrender.com/api/students")
+      .then((res) => res.json())
+      .then((data) => setStudents(data))
+      .catch((err) => console.error("Error fetching students:", err));
+  }, []);
 
   // Live count per class
   const getClassCount = (cls) => students.filter((s) => s.class === cls).length;
