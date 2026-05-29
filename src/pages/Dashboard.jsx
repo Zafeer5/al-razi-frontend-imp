@@ -27,7 +27,24 @@ export default function Dashboard() {
 
   const classesList = ["9th", "10th", "11th", "12th"];
 
-  // Load students dataset from repository structure
+  // 1. LIVE DATABASE STATES ADD KIYE HAIN
+  const [allStudents, setAllStudents] = useState([]);
+  const [allMarks, setAllMarks] = useState([]);
+
+  // 2. FETCH FROM CLOUD ON MOUNT
+  useEffect(() => {
+    fetch("https://al-razi-backend-imp.onrender.com/api/students")
+      .then((res) => res.json())
+      .then((data) => setAllStudents(data))
+      .catch((err) => console.error("Error fetching students:", err));
+
+    fetch("https://al-razi-backend-imp.onrender.com/api/marks")
+      .then((res) => res.json())
+      .then((data) => setAllMarks(data))
+      .catch((err) => console.error("Error fetching marks:", err));
+  }, []);
+
+  // 3. DYNAMIC CLASS FILTERING
   useEffect(() => {
     if (!selectedClass) {
       setClassStudents([]);
@@ -35,8 +52,7 @@ export default function Dashboard() {
       return;
     }
 
-    const savedStudents = localStorage.getItem("alRaziStudentsDatabase");
-    const allStudents = savedStudents ? JSON.parse(savedStudents) : [];
+    // Ab data API wale state 'allStudents' se filter hoga
     const filtered = allStudents.filter((s) => s.class === selectedClass);
 
     filtered.sort((a, b) => Number(a.rollNo) - Number(b.rollNo));
@@ -48,10 +64,10 @@ export default function Dashboard() {
     });
     setMarksData(initialMarks);
     setSaveSuccess(false);
-  }, [selectedClass]);
+  }, [selectedClass, allStudents]);
 
   // =========================================================================
-  // REAL-TIME DUPLICATE DETECTION LOGIC (Checks Class + Subject + Round)
+  // REAL-TIME DUPLICATE DETECTION LOGIC (Now using Live API Data)
   // =========================================================================
   useEffect(() => {
     if (!selectedClass || !subject.trim() || !round) {
@@ -59,13 +75,9 @@ export default function Dashboard() {
       return;
     }
 
-    const existingMarksLedger = JSON.parse(
-      localStorage.getItem("alRaziMarksDatabase") || "[]",
-    );
     const currentSubjectUpper = subject.trim().toUpperCase();
 
-    // Agar is Class, Subject, aur Round ka pehle se koi AIK BHI record hai, toh alert trigger hoga
-    const matchFound = existingMarksLedger.some(
+    const matchFound = allMarks.some(
       (record) =>
         record.class === selectedClass &&
         record.subject === currentSubjectUpper &&
@@ -73,7 +85,7 @@ export default function Dashboard() {
     );
 
     setIsDuplicateDetected(matchFound);
-  }, [selectedClass, subject, round]);
+  }, [selectedClass, subject, round, allMarks]);
 
   const handleMarksChange = (studentId, value) => {
     setMarksData((prev) => ({
