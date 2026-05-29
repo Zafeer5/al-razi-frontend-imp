@@ -30,7 +30,14 @@ export default function Dashboard() {
   // 1. LIVE DATABASE STATES ADD KIYE HAIN
   const [allStudents, setAllStudents] = useState([]);
   const [allMarks, setAllMarks] = useState([]);
-
+// SECURITY LOCK: Check if teacher is logged in
+  useEffect(() => {
+    const isVerified = sessionStorage.getItem("isTeacherVerified");
+    if (isVerified !== "true") {
+      // Agar chabi nahi mili toh seedha login page par wapas bhej do
+      navigate("/teacher-login"); 
+    }
+  }, [navigate]);
   // 2. FETCH FROM CLOUD ON MOUNT
   useEffect(() => {
     fetch("https://al-razi-backend-imp.onrender.com/api/students")
