@@ -19,7 +19,7 @@ import {
 export default function StudentsDatabase() {
   const navigate = useNavigate();
 
- const [students, setStudents] = useState([]);
+  const [students, setStudents] = useState([]);
 
   // Search and Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -99,23 +99,48 @@ export default function StudentsDatabase() {
     return String(dateInput);
   };
 
-  // Delete Record Handler
-  const handleDelete = (id) => {
+  // Delete Record Handler (LIVE API)
+  const handleDelete = async (id) => {
     if (
       window.confirm(
         "Are you absolutely sure you want to delete this student permanently from the database?",
       )
     ) {
-      setStudents(students.filter((s) => s.id !== id));
+      try {
+        const response = await fetch(`https://al-razi-backend-imp.onrender.com/api/students/${id}`, {
+          method: "DELETE",
+        });
+        if (response.ok) {
+          // Frontend se bhi hata dein agar database se delete ho jaye
+          setStudents(students.filter((s) => s.id !== id));
+        } else {
+          alert("Failed to delete student from MongoDB.");
+        }
+      } catch (error) {
+        console.error("Delete Error:", error);
+        alert("Server connection failed during deletion.");
+      }
     }
   };
 
   // =========================================================================
-  // FINAL TRANSACTION COMMIT WIPE
+  // FINAL TRANSACTION COMMIT WIPE (LIVE API)
   // =========================================================================
-  const executeFinalWipeRepository = () => {
-    setStudents([]);
-    setShowWipeModal2(false);
+  const executeFinalWipeRepository = async () => {
+    try {
+      const response = await fetch("https://al-razi-backend-imp.onrender.com/api/students", {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setStudents([]);
+        setShowWipeModal2(false);
+      } else {
+        alert("Failed to wipe repository in MongoDB.");
+      }
+    } catch (error) {
+      console.error("Wipe Error:", error);
+      alert("Server connection failed during wipe.");
+    }
   };
 
   // CSV Export Engine
@@ -173,7 +198,7 @@ export default function StudentsDatabase() {
     });
   };
 
-  // Save Edits Handler
+  // Save Edits Handler (Note: This is still Frontend only, backend Update API needed for full functionality later)
   const handleEditSave = (id) => {
     setStudents(
       students.map((s) => {
@@ -512,7 +537,7 @@ export default function StudentsDatabase() {
       </main>
 
       {/* ==========================================
-          POP-UP MODAL LAYER 1: FIRST WARNING
+         POP-UP MODAL LAYER 1: FIRST WARNING
          ========================================== */}
       {showWipeModal1 && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -561,7 +586,7 @@ export default function StudentsDatabase() {
       )}
 
       {/* ==========================================
-          POP-UP MODAL LAYER 2: CRITICAL MAXIMUM WARNING
+         POP-UP MODAL LAYER 2: CRITICAL MAXIMUM WARNING
          ========================================== */}
       {showWipeModal2 && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
