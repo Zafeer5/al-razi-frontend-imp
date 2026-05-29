@@ -26,11 +26,25 @@ export default function Dashboard() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const classesList = ["9th", "10th", "11th", "12th"];
+  
+  // PREDEFINED SUBJECTS LIST FOR AUTO-SUGGESTION
+  const predefinedSubjects = [
+    "Accounting", "Agriculture", "Arabic", "Banking", "Biology",
+    "Business Math", "Business Statistics", "Chemistry", "Civics",
+    "Clothing & Textile", "Commercial Geography", "Computer", "Computer-Tech",
+    "Economics", "Education", "English", "Ethics", "Food & Nutrition",
+    "General Math", "General Science", "Geography", "Health & Physical Education",
+    "History", "Home Economics", "ICT-Tech", "Islamiyat (Compulsory)",
+    "Islamiyat (Elective)", "Library Science", "Math", "Pakistan Studies",
+    "Persian", "Physics", "Principles of Commerce", "Psychology", "Punjabi",
+    "Statistics", "Tarjuma-tul-Quran", "Urdu"
+  ];
 
   // 1. LIVE DATABASE STATES ADD KIYE HAIN
   const [allStudents, setAllStudents] = useState([]);
   const [allMarks, setAllMarks] = useState([]);
-// SECURITY LOCK: Check if teacher is logged in
+
+  // SECURITY LOCK: Check if teacher is logged in
   useEffect(() => {
     const isVerified = sessionStorage.getItem("isTeacherVerified");
     if (isVerified !== "true") {
@@ -38,6 +52,7 @@ export default function Dashboard() {
       navigate("/teacher-login"); 
     }
   }, [navigate]);
+
   // 2. FETCH FROM CLOUD ON MOUNT
   useEffect(() => {
     fetch("https://al-razi-backend-imp.onrender.com/api/students")
@@ -153,12 +168,6 @@ export default function Dashboard() {
   };
 
   // =========================================================================
-  // OVERWRITE ENGINE AND DATABASE WRITER TRANSACTION
-  // =========================================================================
-  // =========================================================================
-  // ROW-BY-ROW SMART UPDATE & OVERWRITE ENGINE
-  // =========================================================================
-// =========================================================================
   // SAVE DATA TO MONGODB (LIVE API)
   // =========================================================================
   const executeCommitSaveToDatabase = async (shouldOverwrite = false) => {
@@ -184,9 +193,6 @@ export default function Dashboard() {
         totalMarks: Number(total),
         obtainedMarks: Number(marksData[student.id])
       }));
-
-    // Mentor Note: Backend mein "Delete/Overwrite" ki API abhi banani baqi hai.
-    // Fill haal yeh function "Save" ka kaam reliably karega taake cycle complete ho.
 
     try {
       const response = await fetch("https://al-razi-backend-imp.onrender.com/api/marks", {
@@ -273,8 +279,7 @@ export default function Dashboard() {
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-start space-x-2.5 mb-6">
                 <AlertTriangle className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                  Subject ki spelling hamesha wohi rakhein. Pehli entry kay baad
-                  suggest ho jayegi.
+                  Subject ka naam type karna shuru karein, system automatically suggest kar dega.
                 </p>
               </div>
             )}
@@ -298,13 +303,20 @@ export default function Dashboard() {
               </div>
 
               <div>
+                {/* HTML5 DATALIST IMPLEMENTATION */}
                 <input
                   type="text"
+                  list="subject-suggestions"
                   placeholder="SUBJECT"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   className="w-full bg-slate-100 text-slate-700 font-semibold placeholder-slate-400 py-3 px-4 rounded-xl border border-transparent focus:border-slate-300 focus:bg-white outline-none uppercase tracking-wider text-sm"
                 />
+                <datalist id="subject-suggestions">
+                  {predefinedSubjects.map((sub, index) => (
+                    <option key={index} value={sub.toUpperCase()} />
+                  ))}
+                </datalist>
               </div>
 
               <div>
@@ -443,7 +455,7 @@ export default function Dashboard() {
       </div>
 
       {/* =========================================================================
-          TAILWIND CUSTOM MODAL POP-UP WITH OVERWRITE INTERACTION FUNCTION
+         TAILWIND CUSTOM MODAL POP-UP WITH OVERWRITE INTERACTION FUNCTION
          ========================================================================= */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -491,7 +503,7 @@ export default function Dashboard() {
                 Cancel
               </button>
               <button
-                onClick={() => executeCommitSaveToDatabase(true)} // Sends overwrite parameters as true
+                onClick={() => executeCommitSaveToDatabase(true)}
                 className="flex-1 bg-[#1e3a8a] hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl text-xs uppercase tracking-wider shadow-md shadow-blue-900/10 transition-all active:scale-95"
               >
                 Overwrite & Save
