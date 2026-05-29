@@ -151,13 +151,12 @@ export default function Dashboard() {
   // =========================================================================
   // ROW-BY-ROW SMART UPDATE & OVERWRITE ENGINE
   // =========================================================================
-  const executeCommitSaveToDatabase = (shouldOverwrite = false) => {
-    let existingMarksLedger = JSON.parse(
-      localStorage.getItem("alRaziMarksDatabase") || "[]",
-    );
+// =========================================================================
+  // SAVE DATA TO MONGODB (LIVE API)
+  // =========================================================================
+  const executeCommitSaveToDatabase = async (shouldOverwrite = false) => {
     const currentSubjectUpper = subject.trim().toUpperCase();
 
-    // 1. Pehle sirf un entries ko collect karein jahan marks waqai enter hue hain
     const newEntries = classStudents
       .filter((student) => {
         const markValue = marksData[student.id];
@@ -176,40 +175,43 @@ export default function Dashboard() {
         subject: currentSubjectUpper,
         round: round,
         totalMarks: Number(total),
-        obtainedMarks: Number(marksData[student.id]),
-        date: new Date().toISOString(),
+        obtainedMarks: Number(marksData[student.id])
       }));
 
-    if (shouldOverwrite) {
-      // SMART MUTATION LAYER:
-      // Purane ledger mein se sirf un rows ko delete karo jo is Class, Subject, Round AND unhi specific Roll Numbers se match karti hain jinki entries hum naye siray se kar rahe hain!
-      const newRollNumbersToUpdate = newEntries.map((e) => String(e.rollNo));
+    // Mentor Note: Backend mein "Delete/Overwrite" ki API abhi banani baqi hai.
+    // Fill haal yeh function "Save" ka kaam reliably karega taake cycle complete ho.
 
-      existingMarksLedger = existingMarksLedger.filter((oldRecord) => {
-        const isSameConfig =
-          oldRecord.class === selectedClass &&
-          oldRecord.subject === currentSubjectUpper &&
-          String(oldRecord.round) === String(round);
-
-        // Agar configuration match karti hai AUR roll number bhi unme se ek hai jo abhi re-enter hua hai, toh isko remove (delete) kar do taake naya data replace ho sake
-        if (
-          isSameConfig &&
-          newRollNumbersToUpdate.includes(String(oldRecord.rollNo))
-        ) {
-          return false;
-        }
-        return true; // Baqi saare students ka data wese hi mehfooz rahega
+    try {
+      const response = await fetch("https://al-razi-backend-imp.onrender.com/api/marks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newEntries),
       });
+
+      if (response.ok) {
+        const savedMarks = await response.json();
+        
+        // Local state update taake check dubara properly chale refresh ke baghair
+        setAllMarks((prev) => [...prev, ...(Array.isArray(savedMarks) ? savedMarks : [savedMarks])]);
+
+        // UI parameters reset
+        setShowConfirmModal(false);
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 4000);
+        
+        // Form clear karein
+        const resetMarks = {};
+        classStudents.forEach(s => { resetMarks[s.id] = ""; });
+        setMarksData(resetMarks);
+        setTotal("");
+        setSubject("");
+      } else {
+        alert("Error: Database ne marks save nahi kiye.");
+      }
+    } catch (error) {
+      console.error("API Error saving marks:", error);
+      alert("Server connection failed!");
     }
-
-    // 2. Naye modified records ko bache hue safe records ke sath append karke save karein
-    const updatedLedger = [...newEntries, ...existingMarksLedger];
-    localStorage.setItem("alRaziMarksDatabase", JSON.stringify(updatedLedger));
-
-    // UI parameters reset
-    setShowConfirmModal(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 4000);
   };
 
   return (
