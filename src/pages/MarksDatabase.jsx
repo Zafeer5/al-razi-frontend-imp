@@ -20,7 +20,7 @@ export default function MarksDatabase() {
   const navigate = useNavigate();
 
   const [marksRecords, setMarksRecords] = useState([]);
-  const [studentsRecords, setStudentsRecords] = useState([]); // Naya state students data ke liye
+  const [studentsRecords, setStudentsRecords] = useState([]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterClass, setFilterClass] = useState("All");
@@ -32,13 +32,11 @@ export default function MarksDatabase() {
 
   // Live Data Fetch from Render Backend
   useEffect(() => {
-    // 1. Fetch Marks
     fetch("https://al-razi-backend-imp.onrender.com/api/marks")
       .then((res) => res.json())
       .then((data) => setMarksRecords(data))
       .catch((err) => console.error("Error fetching marks:", err));
 
-    // 2. Fetch Students (Taake naam aur roll number marks ke sath join kiye ja sakein)
     fetch("https://al-razi-backend-imp.onrender.com/api/students")
       .then((res) => res.json())
       .then((data) => setStudentsRecords(data))
@@ -74,21 +72,14 @@ export default function MarksDatabase() {
         ).toFixed(1)
       : 0;
 
-  // =========================================================================
-  // DELETE FUNCTIONS (CONNECTED TO LIVE API)
-  // =========================================================================
-  
   // Single Record Deletion Handler
   const handleDeleteSingle = async (id) => {
-    if (
-      window.confirm("Are you sure you want to delete this marks entry record?")
-    ) {
+    if (window.confirm("Are you sure you want to delete this marks entry record?")) {
       try {
         const response = await fetch(`https://al-razi-backend-imp.onrender.com/api/marks/${id}`, {
           method: "DELETE",
         });
         if (response.ok) {
-          // Frontend se record hata dein agar backend se success mil jaye
           setMarksRecords(marksRecords.filter((m) => m.id !== id));
         } else {
           alert("Failed to delete marks from MongoDB.");
@@ -112,7 +103,6 @@ export default function MarksDatabase() {
           method: "DELETE",
         });
         if (response.ok) {
-           // Frontend state khali kar dein
           setMarksRecords([]);
         } else {
           alert("Failed to wipe marks in MongoDB.");
@@ -130,19 +120,18 @@ export default function MarksDatabase() {
     setEditObtainedMarks(String(record.obtainedMarks));
   };
 
-  // Commit and Save modified student scores matrix row (Note: Frontend Only - Update API pending)
-  const handleSaveEdit = (record) => {
+  // =========================================================================
+  // UPDATE / SAVE EDITS HANDLER (LIVE API CONNECTED)
+  // =========================================================================
+  const handleSaveEdit = async (record) => {
     const newScore = Number(editObtainedMarks);
 
-    // Safety verification check bounds rule
     if (isNaN(newScore) || editObtainedMarks.trim() === "") {
       alert("Please enter a valid numeric value for marks.");
       return;
     }
     if (newScore > record.totalMarks) {
-      alert(
-        `Validation Error: Obtained marks cannot be greater than total marks (${record.totalMarks}).`,
-      );
+      alert(`Validation Error: Obtained marks cannot be greater than total marks (${record.totalMarks}).`);
       return;
     }
     if (newScore < 0) {
@@ -150,15 +139,32 @@ export default function MarksDatabase() {
       return;
     }
 
-    setMarksRecords(
-      marksRecords.map((m) => {
-        if (m.id === record.id) {
-          return { ...m, obtainedMarks: newScore };
-        }
-        return m;
-      }),
-    );
-    setEditingId(null);
+    try {
+      const response = await fetch(`https://al-razi-backend-imp.onrender.com/api/marks/${record.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ obtainedMarks: newScore }),
+      });
+
+      if (response.ok) {
+        setMarksRecords(
+          marksRecords.map((m) => {
+            if (m.id === record.id) {
+              return { ...m, obtainedMarks: newScore };
+            }
+            return m;
+          }),
+        );
+        setEditingId(null);
+      } else {
+        alert("Failed to update marks in database.");
+      }
+    } catch (error) {
+      console.error("Update Error:", error);
+      alert("Server connection failed during update.");
+    }
   };
 
   // Multi-Query Filter Pipeline Engine
