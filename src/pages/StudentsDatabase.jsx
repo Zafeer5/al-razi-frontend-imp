@@ -47,7 +47,7 @@ export default function StudentsDatabase() {
   const getClassCount = (cls) => students.filter((s) => s.class === cls).length;
 
   // =========================================================================
-  // CRASH-PROOF & ROBUST DATE PARSER (Handles Excel Objects, Strings & Serials)
+  // CRASH-PROOF & ROBUST DATE PARSER
   // =========================================================================
   const formatDisplayDate = (dateInput) => {
     if (!dateInput) return "—";
@@ -55,37 +55,28 @@ export default function StudentsDatabase() {
     try {
       let parsedDate = null;
 
-      // Case 1: Agar Excel ne data ko numerical serial number mein parse kiya ho (e.g., 41009)
       if (typeof dateInput === "number") {
         parsedDate = new Date((dateInput - 25569) * 86400 * 1000);
-      }
-      // Case 2: Agar standard JavaScript Date Object ho
-      else if (dateInput instanceof Date) {
+      } else if (dateInput instanceof Date) {
         parsedDate = dateInput;
-      }
-      // Case 3: Agar normal text/string format ho
-      else if (typeof dateInput === "string") {
+      } else if (typeof dateInput === "string") {
         const cleanStr = dateInput.trim();
 
-        // Agar already DD-MM-YYYY ya DD/MM/YYYY ha, toh directly return karein
         if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(cleanStr)) {
           return cleanStr.replace(/\//g, "-");
         }
 
-        // Agar HTML input standard form mein ha (YYYY-MM-DD)
         const parts = cleanStr.split(/[-/]/);
         if (parts.length === 3 && parts[0].length === 4) {
           return `${parts[2].padStart(2, "0")}-${parts[1].padStart(2, "0")}-${parts[0]}`;
         }
 
-        // Try standard browser parsing fallback
         const timestamp = Date.parse(cleanStr);
         if (!isNaN(timestamp)) {
           parsedDate = new Date(timestamp);
         }
       }
 
-      // Agar data safe matrix se successfully parse ho gaya, toh output generate karein
       if (parsedDate && !isNaN(parsedDate.getTime())) {
         const day = String(parsedDate.getDate()).padStart(2, "0");
         const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
@@ -111,7 +102,6 @@ export default function StudentsDatabase() {
           method: "DELETE",
         });
         if (response.ok) {
-          // Frontend se bhi hata dein agar database se delete ho jaye
           setStudents(students.filter((s) => s.id !== id));
         } else {
           alert("Failed to delete student from MongoDB.");
@@ -123,9 +113,7 @@ export default function StudentsDatabase() {
     }
   };
 
-  // =========================================================================
   // FINAL TRANSACTION COMMIT WIPE (LIVE API)
-  // =========================================================================
   const executeFinalWipeRepository = async () => {
     try {
       const response = await fetch("https://al-razi-backend-imp.onrender.com/api/students", {
@@ -198,17 +186,37 @@ export default function StudentsDatabase() {
     });
   };
 
-  // Save Edits Handler (Note: This is still Frontend only, backend Update API needed for full functionality later)
-  const handleEditSave = (id) => {
-    setStudents(
-      students.map((s) => {
-        if (s.id === id) {
-          return { ...s, ...editFormData };
-        }
-        return s;
-      }),
-    );
-    setEditingId(null);
+  // =========================================================================
+  // UPDATE / SAVE EDITS HANDLER (LIVE API CONNECTED)
+  // =========================================================================
+  const handleEditSave = async (id) => {
+    try {
+      const response = await fetch(`https://al-razi-backend-imp.onrender.com/api/students/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(editFormData),
+      });
+
+      if (response.ok) {
+        // Frontend par state update karein
+        setStudents(
+          students.map((s) => {
+            if (s.id === id) {
+              return { ...s, ...editFormData };
+            }
+            return s;
+          })
+        );
+        setEditingId(null); // Edit mode exit karein
+      } else {
+        alert("Failed to update student in database.");
+      }
+    } catch (error) {
+      console.error("Update Error:", error);
+      alert("Server connection failed during update.");
+    }
   };
 
   // Multi-Query Search Filter Logic
