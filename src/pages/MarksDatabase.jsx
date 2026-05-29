@@ -20,10 +20,7 @@ export default function MarksDatabase() {
   const navigate = useNavigate();
 
   // Safely load ledger records from localStorage
-  const [marksRecords, setMarksRecords] = useState(() => {
-    const saved = localStorage.getItem("alRaziMarksDatabase");
-    return saved ? JSON.parse(saved) : [];
-  });
+const [marksRecords, setMarksRecords] = useState([]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterClass, setFilterClass] = useState("All");
@@ -33,10 +30,13 @@ export default function MarksDatabase() {
   const [editingId, setEditingId] = useState(null);
   const [editObtainedMarks, setEditObtainedMarks] = useState("");
 
-  // Keep records synchronized with localStorage
+  // Live Data Fetch from Render Backend
   useEffect(() => {
-    localStorage.setItem("alRaziMarksDatabase", JSON.stringify(marksRecords));
-  }, [marksRecords]);
+    fetch("https://al-razi-backend-imp.onrender.com/api/marks")
+      .then((res) => res.json())
+      .then((data) => setMarksRecords(data))
+      .catch((err) => console.error("Error fetching marks:", err));
+  }, []);
 
   // General Statistics Metric Calculations
   const totalRecords = marksRecords.length;
