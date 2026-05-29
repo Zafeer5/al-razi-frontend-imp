@@ -19,8 +19,8 @@ import {
 export default function MarksDatabase() {
   const navigate = useNavigate();
 
-  // Safely load ledger records from localStorage
-const [marksRecords, setMarksRecords] = useState([]);
+  const [marksRecords, setMarksRecords] = useState([]);
+  const [studentsRecords, setStudentsRecords] = useState([]); // Naya state students data ke liye
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterClass, setFilterClass] = useState("All");
@@ -32,23 +32,38 @@ const [marksRecords, setMarksRecords] = useState([]);
 
   // Live Data Fetch from Render Backend
   useEffect(() => {
+    // 1. Fetch Marks
     fetch("https://al-razi-backend-imp.onrender.com/api/marks")
       .then((res) => res.json())
       .then((data) => setMarksRecords(data))
       .catch((err) => console.error("Error fetching marks:", err));
+
+    // 2. Fetch Students (Taake naam aur roll number marks ke sath join kiye ja sakein)
+    fetch("https://al-razi-backend-imp.onrender.com/api/students")
+      .then((res) => res.json())
+      .then((data) => setStudentsRecords(data))
+      .catch((err) => console.error("Error fetching students:", err));
   }, []);
 
+  // Data Joining (Marks ko Student details ke sath jorna)
+  const enrichedMarks = marksRecords.map((m) => {
+    const studentObj = studentsRecords.find((s) => s.id === m.studentId) || {};
+    return {
+      ...m,
+      studentName: `${studentObj.firstName || "Unknown"} ${studentObj.lastName || ""}`.trim(),
+      rollNo: studentObj.rollNo || "N/A",
+    };
+  });
+
   // General Statistics Metric Calculations
-  const totalRecords = marksRecords.length;
-  const uniqueStudents = [...new Set(marksRecords.map((m) => m.studentId))]
-    .length;
-  const uniqueSubjects = [...new Set(marksRecords.map((m) => m.subject))]
-    .length;
+  const totalRecords = enrichedMarks.length;
+  const uniqueStudents = [...new Set(enrichedMarks.map((m) => m.studentId))].length;
+  const uniqueSubjects = [...new Set(enrichedMarks.map((m) => m.subject))].length;
 
   const avgPercentage =
     totalRecords > 0
       ? (
-          (marksRecords.reduce(
+          (enrichedMarks.reduce(
             (acc, curr) =>
               acc +
               Number(curr.obtainedMarks || 0) / Number(curr.totalMarks || 1),
@@ -59,7 +74,7 @@ const [marksRecords, setMarksRecords] = useState([]);
         ).toFixed(1)
       : 0;
 
-  // Single Record Deletion Handler
+  // Single Record Deletion Handler (Frontend View Only - Backend API baqi hai)
   const handleDeleteSingle = (id) => {
     if (
       window.confirm("Are you sure you want to delete this marks entry record?")
@@ -68,7 +83,7 @@ const [marksRecords, setMarksRecords] = useState([]);
     }
   };
 
-  // Central Database Core Wipe Handler
+  // Central Database Core Wipe Handler (Frontend View Only)
   const handleDeleteAll = () => {
     if (
       window.confirm(
@@ -85,7 +100,7 @@ const [marksRecords, setMarksRecords] = useState([]);
     setEditObtainedMarks(String(record.obtainedMarks));
   };
 
-  // Commit and Save modified student scores matrix row
+  // Commit and Save modified student scores matrix row (Frontend View Only)
   const handleSaveEdit = (record) => {
     const newScore = Number(editObtainedMarks);
 
@@ -117,7 +132,7 @@ const [marksRecords, setMarksRecords] = useState([]);
   };
 
   // Multi-Query Filter Pipeline Engine
-  const filteredData = marksRecords.filter((m) => {
+  const filteredData = enrichedMarks.filter((m) => {
     const query = searchQuery.toLowerCase().trim();
     const nameStr = (m.studentName || "").toLowerCase();
     const subStr = (m.subject || "").toLowerCase();
