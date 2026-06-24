@@ -7,6 +7,7 @@ import {
   Save,
   CheckCircle,
   X,
+  Search, // NAYA ICON ADD KIYA
 } from "lucide-react";
 import academyLogo from "../assets/logo ac.jpg";
 
@@ -23,6 +24,9 @@ export default function Dashboard() {
   const [classStudents, setClassStudents] = useState([]);
   const [marksData, setMarksData] = useState({});
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // NAYA STATE: Student search shortlist karne ke liye
+  const [searchQuery, setSearchQuery] = useState("");
 
   // States for dynamic overwrite alert matrix
   const [isDuplicateDetected, setIsDuplicateDetected] = useState(false);
@@ -74,6 +78,7 @@ export default function Dashboard() {
     if (!selectedClass) {
       setClassStudents([]);
       setMarksData({});
+      setSearchQuery(""); // Clear search on class change
       return;
     }
 
@@ -89,6 +94,7 @@ export default function Dashboard() {
     });
     setMarksData(initialMarks);
     setSaveSuccess(false);
+    setSearchQuery(""); // Clear search on class change
   }, [selectedClass, allStudents]);
 
   // =========================================================================
@@ -235,6 +241,7 @@ export default function Dashboard() {
         setMarksData(resetMarks);
         setTotal("");
         setSubject("");
+        setSearchQuery(""); // Clear search query upon successful submission
       } else {
         alert("Error: Database ne marks save nahi kiye.");
       }
@@ -243,6 +250,14 @@ export default function Dashboard() {
       alert("Server connection failed!");
     }
   };
+
+  // DYNAMICALLY FILTER STUDENTS BASED ON SEARCH INPUT
+  const filteredStudentsBySearch = classStudents.filter((student) => {
+    const fullName = `${student.firstName} ${student.lastName || ""}`.toLowerCase();
+    const rollNoStr = String(student.rollNo);
+    const search = searchQuery.toLowerCase().trim();
+    return fullName.includes(search) || rollNoStr.includes(search);
+  });
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans antialiased flex flex-col h-screen overflow-hidden">
@@ -415,54 +430,85 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto p-3 space-y-1 bg-slate-50/50">
-                  {classStudents.map((student) => {
-                    const currentScore = Number(marksData[student.id] || 0);
-                    const maxAllowed = Number(total || 0);
-                    const isInvalid = total !== "" && currentScore > maxAllowed;
-
-                    return (
-                      <div
-                        key={student.id}
-                        className={`flex items-center justify-between p-3 rounded-xl border ${
-                          isInvalid
-                            ? "bg-red-50 border-red-200"
-                            : "bg-white border-slate-100 hover:border-slate-200"
-                        }`}
+                {/* SEARCH INPUT FIELD (Naya Feature) */}
+                <div className="p-3 bg-white border-b border-slate-100 flex items-center">
+                  <div className="relative w-full">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <Search className="h-4 w-4 text-slate-400" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search student by name or roll no..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200/80 text-slate-700 placeholder-slate-400 text-sm font-medium pl-10 pr-10 py-2.5 rounded-xl focus:border-slate-300 focus:bg-white outline-none transition-all"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
                       >
-                        <div className="flex items-center space-x-4 truncate">
-                          <span className="w-10 h-10 bg-[#1e3a8a] text-white rounded-full font-mono text-xs font-bold flex items-center justify-center shrink-0">
-                            {student.rollNo}
-                          </span>
-                          <span className="text-sm font-bold text-slate-800 truncate">
-                            {student.firstName} {student.lastName || ""}
-                          </span>
-                        </div>
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                        <div className="flex flex-col items-end space-y-1">
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="—"
-                            value={marksData[student.id] || ""}
-                            onChange={(e) =>
-                              handleMarksChange(student.id, e.target.value)
-                            }
-                            className={`w-20 text-center py-2 px-1 rounded-xl font-mono font-bold text-sm border outline-none ${
-                              isInvalid
-                                ? "bg-red-100 text-red-800 border-red-400"
-                                : "bg-slate-100 text-slate-800 border-transparent focus:border-slate-300 focus:bg-white"
-                            }`}
-                          />
-                          {isInvalid && (
-                            <span className="text-[9px] text-red-600 font-bold uppercase tracking-wide animate-pulse">
-                              Exceeds Max!
+                <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto p-3 space-y-1 bg-slate-50/50">
+                  {filteredStudentsBySearch.length === 0 ? (
+                    <div className="p-8 text-center text-sm font-medium text-slate-400">
+                      No matching student found.
+                    </div>
+                  ) : (
+                    filteredStudentsBySearch.map((student) => {
+                      const currentScore = Number(marksData[student.id] || 0);
+                      const maxAllowed = Number(total || 0);
+                      const isInvalid = total !== "" && currentScore > maxAllowed;
+
+                      return (
+                        <div
+                          key={student.id}
+                          className={`flex items-center justify-between p-3 rounded-xl border ${
+                            isInvalid
+                              ? "bg-red-50 border-red-200"
+                              : "bg-white border-slate-100 hover:border-slate-200"
+                          }`}
+                        >
+                          <div className="flex items-center space-x-4 truncate">
+                            <span className="w-10 h-10 bg-[#1e3a8a] text-white rounded-full font-mono text-xs font-bold flex items-center justify-center shrink-0">
+                              {student.rollNo}
                             </span>
-                          )}
+                            <span className="text-sm font-bold text-slate-800 truncate">
+                              {student.firstName} {student.lastName || ""}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col items-end space-y-1">
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="—"
+                              value={marksData[student.id] || ""}
+                              onChange={(e) =>
+                                handleMarksChange(student.id, e.target.value)
+                              }
+                              className={`w-20 text-center py-2 px-1 rounded-xl font-mono font-bold text-sm border outline-none ${
+                                isInvalid
+                                  ? "bg-red-100 text-red-800 border-red-400"
+                                  : "bg-slate-100 text-slate-800 border-transparent focus:border-slate-300 focus:bg-white"
+                              }`}
+                            />
+                            {isInvalid && (
+                              <span className="text-[9px] text-red-600 font-bold uppercase tracking-wide animate-pulse">
+                                Exceeds Max!
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
 
                 <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
@@ -489,8 +535,8 @@ export default function Dashboard() {
       </div>
 
       {/* =========================================================================
-         TAILWIND CUSTOM MODAL POP-UP WITH OVERWRITE INTERACTION FUNCTION
-         ========================================================================= */}
+          TAILWIND CUSTOM MODAL POP-UP WITH OVERWRITE INTERACTION FUNCTION
+          ========================================================================= */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden p-6 relative animate-scale-up">
