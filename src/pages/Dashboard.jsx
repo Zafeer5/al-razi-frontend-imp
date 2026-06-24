@@ -405,7 +405,7 @@ export default function Dashboard() {
               <form onSubmit={handleSaveClickAttempt} className="flex flex-col">
                 <div className="bg-slate-50 px-6 py-3.5 border-b border-slate-100 flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Roster Sheet: Class {selectedClass} ({classStudents.length}{" "}
+                    Marks Sheet: Class {selectedClass} ({classStudents.length}{" "}
                     Students)
                   </span>
                   {total && (
