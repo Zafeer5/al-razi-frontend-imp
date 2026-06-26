@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BookOpen,
@@ -7,7 +7,9 @@ import {
   Save,
   CheckCircle,
   X,
-  Search, // NAYA ICON ADD KIYA
+  Search,
+  MoreVertical, // NAYA ICON 3 DOTS KE LIYE
+  Zap,          // NAYA ICON AUTO-FILL ZERO KE LIYE
 } from "lucide-react";
 import academyLogo from "../assets/logo ac.jpg";
 
@@ -32,6 +34,10 @@ export default function Dashboard() {
   const [isDuplicateDetected, setIsDuplicateDetected] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // NAYI STATES: 3-Dots dropdown open/close control karne ke liye
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
   const classesList = ["9th", "10th", "11th", "12th"];
   
   // PREDEFINED SUBJECTS LIST FOR AUTO-SUGGESTION
@@ -47,6 +53,16 @@ export default function Dashboard() {
     "Statistics", "Tarjuma-tul-Quran", "Urdu"
   ];
 
+  // NAYI LIST: Jin subjects par yeh 3-dots feature show hoga (Uppercase check ke liye)
+  const allowedGeneralSubjects = [
+    "ENGLISH",
+    "URDU",
+    "MATH",
+    "ISLAMIYAT (COMPULSORY)",
+    "TARJUMA-TUL-QURAN",
+    "PAKISTAN STUDIES"
+  ];
+
   // 1. LIVE DATABASE STATES ADD KIYE HAIN
   const [allStudents, setAllStudents] = useState([]);
   const [allMarks, setAllMarks] = useState([]);
@@ -55,7 +71,6 @@ export default function Dashboard() {
   useEffect(() => {
     const isVerified = sessionStorage.getItem("isTeacherVerified");
     if (isVerified !== "true") {
-      // Agar chabi nahi mili toh seedha login page par wapas bhej do
       navigate("/teacher-login"); 
     }
   }, [navigate]);
@@ -73,16 +88,26 @@ export default function Dashboard() {
       .catch((err) => console.error("Error fetching marks:", err));
   }, []);
 
+  // Dropdown ke baahar click karne se menu close ho jaye uski logic
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // 3. DYNAMIC CLASS FILTERING
   useEffect(() => {
     if (!selectedClass) {
       setClassStudents([]);
       setMarksData({});
-      setSearchQuery(""); // Clear search on class change
+      setSearchQuery(""); 
       return;
     }
 
-    // Ab data API wale state 'allStudents' se filter hoga
     const filtered = allStudents.filter((s) => s.class === selectedClass);
 
     filtered.sort((a, b) => Number(a.rollNo) - Number(b.rollNo));
@@ -94,7 +119,7 @@ export default function Dashboard() {
     });
     setMarksData(initialMarks);
     setSaveSuccess(false);
-    setSearchQuery(""); // Clear search on class change
+    setSearchQuery(""); 
   }, [selectedClass, allStudents]);
 
   // =========================================================================
@@ -126,7 +151,25 @@ export default function Dashboard() {
     if (saveSuccess) setSaveSuccess(false);
   };
 
-  // Intercept data packet submission request
+  // NAYA FUNCTION: Jo empty fields ko dhoond kar 0 set karega
+  const handleFillEmptyWithZeros = () => {
+    setMarksData((prev) => {
+      const updatedMarks = { ...prev };
+      classStudents.forEach((student) => {
+        // Agar pehle se koi value nahi likhi hui toh usey '0' assign kar do
+        if (
+          updatedMarks[student.id] === undefined ||
+          updatedMarks[student.id] === null ||
+          String(updatedMarks[student.id]).trim() === ""
+        ) {
+          updatedMarks[student.id] = "0";
+        }
+      });
+      return updatedMarks;
+    });
+    setShowDropdown(false); // Action perform hote hi menu close ho jaye
+  };
+
   const handleSaveClickAttempt = (e) => {
     e.preventDefault();
     if (!selectedClass || !subject || !round || !total) {
@@ -134,9 +177,6 @@ export default function Dashboard() {
       return;
     }
 
-    // =========================================================================
-    // STRICT SUBJECT VALIDATION: Block invalid or misspelled subjects (Inline Error)
-    // =========================================================================
     const currentSubjectUpper = subject.trim().toUpperCase();
     const isValidSubject = predefinedSubjects.some(
       (sub) => sub.toUpperCase() === currentSubjectUpper
@@ -144,11 +184,10 @@ export default function Dashboard() {
 
     if (!isValidSubject) {
       setSubjectError("Please select a valid subject from the list.");
-      setTimeout(() => setSubjectError(""), 3000); // 3 seconds baad khud gayab
+      setTimeout(() => setSubjectError(""), 3000); 
       return;
     }
 
-    // High validation constraint pass pipeline
     let hasValidationError = false;
     classStudents.forEach((s) => {
       const markValue = marksData[s.id];
@@ -162,9 +201,7 @@ export default function Dashboard() {
     });
 
     if (hasValidationError) {
-      alert(
-        "Cannot save! Some students have marks greater than the Total marks.",
-      );
+      alert("Cannot save! Some students have marks greater than the Total marks.");
       return;
     }
 
@@ -182,17 +219,13 @@ export default function Dashboard() {
       return;
     }
 
-    // If duplicate configuration found, trigger modal instead of saving blindly
     if (isDuplicateDetected) {
       setShowConfirmModal(true);
     } else {
-      executeCommitSaveToDatabase(false); // Normal routine save
+      executeCommitSaveToDatabase(false); 
     }
   };
 
-  // =========================================================================
-  // SAVE DATA TO MONGODB (LIVE API)
-  // =========================================================================
   const executeCommitSaveToDatabase = async (shouldOverwrite = false) => {
     const currentSubjectUpper = subject.trim().toUpperCase();
 
@@ -226,22 +259,18 @@ export default function Dashboard() {
 
       if (response.ok) {
         const savedMarks = await response.json();
-        
-        // Local state update taake check dubara properly chale refresh ke baghair
         setAllMarks((prev) => [...prev, ...(Array.isArray(savedMarks) ? savedMarks : [savedMarks])]);
 
-        // UI parameters reset
         setShowConfirmModal(false);
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 4000);
         
-        // Form clear karein
         const resetMarks = {};
         classStudents.forEach(s => { resetMarks[s.id] = ""; });
         setMarksData(resetMarks);
         setTotal("");
         setSubject("");
-        setSearchQuery(""); // Clear search query upon successful submission
+        setSearchQuery(""); 
       } else {
         alert("Error: Database ne marks save nahi kiye.");
       }
@@ -251,13 +280,16 @@ export default function Dashboard() {
     }
   };
 
-  // DYNAMICALLY FILTER STUDENTS BASED ON SEARCH INPUT
   const filteredStudentsBySearch = classStudents.filter((student) => {
     const fullName = `${student.firstName} ${student.lastName || ""}`.toLowerCase();
     const rollNoStr = String(student.rollNo);
     const search = searchQuery.toLowerCase().trim();
     return fullName.includes(search) || rollNoStr.includes(search);
   });
+
+  // Check variables for displaying feature conditionally
+  const currentSubjectClean = subject.trim().toUpperCase();
+  const isFeatureAllowedSubject = allowedGeneralSubjects.includes(currentSubjectClean);
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans antialiased flex flex-col h-screen overflow-hidden">
@@ -275,7 +307,7 @@ export default function Dashboard() {
               Al Razi Academy
             </h1>
             <p className="text-xs md:text-sm italic text-slate-300 font-light">
-              Excellence lies in determination
+              Excellent lies in determination
             </p>
           </div>
         </div>
@@ -297,7 +329,6 @@ export default function Dashboard() {
               <span className="uppercase">Mark Entry</span>
             </div>
 
-            {/* LIVE DYNAMIC SYSTEM STATE WARNING INDICATOR */}
             {isDuplicateDetected ? (
               <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-start space-x-2.5 mb-6 animate-fade-in">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -335,7 +366,6 @@ export default function Dashboard() {
               </div>
 
               <div>
-                {/* HTML5 DATALIST IMPLEMENTATION WITH INLINE ERROR MOCKUP */}
                 <input
                   type="text"
                   list="subject-suggestions"
@@ -343,7 +373,7 @@ export default function Dashboard() {
                   value={subject}
                   onChange={(e) => {
                     setSubject(e.target.value);
-                    if (subjectError) setSubjectError(""); // Type karte hi error gayab ho jaye
+                    if (subjectError) setSubjectError(""); 
                   }}
                   className={`w-full font-semibold py-3 px-4 rounded-xl border outline-none uppercase tracking-wider text-sm transition-all ${
                     subjectError
@@ -357,7 +387,6 @@ export default function Dashboard() {
                   ))}
                 </datalist>
 
-                {/* INLINE ERROR DISPLAY */}
                 {subjectError && (
                   <div className="flex items-center space-x-1 mt-1.5 ml-1 animate-fade-in">
                     <AlertTriangle className="w-3 h-3 text-red-500" />
@@ -430,9 +459,9 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* SEARCH INPUT FIELD (Naya Feature) */}
-                <div className="p-3 bg-white border-b border-slate-100 flex items-center">
-                  <div className="relative w-full">
+                {/* SEARCH INPUT BOX WITH CONDITIONAL 3-DOTS ACTION DROP-DOWN */}
+                <div className="p-3 bg-white border-b border-slate-100 flex items-center justify-between gap-2">
+                  <div className="relative flex-1">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                       <Search className="h-4 w-4 text-slate-400" />
                     </div>
@@ -453,6 +482,34 @@ export default function Dashboard() {
                       </button>
                     )}
                   </div>
+
+                  {/* CONDITIONAL 3-DOTS RENDER PIPELINE */}
+                  {isFeatureAllowedSubject && (
+                    <div className="relative" ref={dropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setShowDropdown(!showDropdown)}
+                        className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all focus:outline-none flex items-center justify-center"
+                        title="Options"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+
+                      {/* DRILLDOWN BUTTON CONTAINER MENU */}
+                      {showDropdown && (
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-xl shadow-xl z-30 p-1.5 animate-fade-in origin-top-right">
+                          <button
+                            type="button"
+                            onClick={handleFillEmptyWithZeros}
+                            className="w-full flex items-center space-x-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-lg transition-all text-left"
+                          >
+                            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                            <span>Fill Empty with 0</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto p-3 space-y-1 bg-slate-50/50">
@@ -534,9 +591,6 @@ export default function Dashboard() {
         </main>
       </div>
 
-      {/* =========================================================================
-          TAILWIND CUSTOM MODAL POP-UP WITH OVERWRITE INTERACTION FUNCTION
-          ========================================================================= */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 overflow-hidden p-6 relative animate-scale-up">
