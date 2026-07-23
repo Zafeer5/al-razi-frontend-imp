@@ -32,6 +32,8 @@ export default function AdminPanel() {
   const [selectedRounds, setSelectedRounds] = useState(["R1", "R2", "R3"]);
   const [searchQuery, setSearchQuery] = useState("");
 
+  const [globalGrandTotal, setGlobalGrandTotal] = useState(""); // NEW STATE FOR GRAND TOTAL OVERRIDE
+
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [isSingleModalOpen, setIsSingleModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -42,7 +44,7 @@ export default function AdminPanel() {
   const [activeReportMode, setActiveReportMode] = useState("single");
 
   const [students, setStudents] = useState([]);
-  const [globalMarks, setGlobalMarks] = useState([]); // API se Live Data Fetch karein
+  const [globalMarks, setGlobalMarks] = useState([]);
 
   useEffect(() => {
     fetch("https://al-razi-backend-imp.onrender.com/api/students")
@@ -131,6 +133,7 @@ export default function AdminPanel() {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleSingleSubmit = async (e) => {
     e.preventDefault();
     const newStudent = {
@@ -163,9 +166,8 @@ export default function AdminPanel() {
           class: "",
         });
         setIsSingleModalOpen(false);
-        alert("✅ Student Saved Successfully!"); // Kamyabi ka message
+        alert("✅ Student Saved Successfully!");
       } else {
-        // Agar backend reject kare toh error dikhaye
         const errorData = await response.json();
         console.error("Backend Reject Error:", errorData);
         alert(
@@ -174,7 +176,6 @@ export default function AdminPanel() {
         );
       }
     } catch (error) {
-      // Agar server hi connect na ho
       console.error("API Error:", error);
       alert(
         "❌ Server connection failed! Kya aapka backend (node server.js) chal raha hai?",
@@ -281,7 +282,7 @@ export default function AdminPanel() {
 
   const getSingleStudentMetrics = (studentObj) => {
     if (!studentObj)
-      return { rows: [], totalMax: 0, totalObt: 0, perc: 0, status: "FAIL" };
+      return { rows: [], grandTotalMax: 0, grandTotalObt: 0, perc: 0, status: "FAIL", originalGrandTotalMax: 0 };
 
     const studentScores = globalMarks.filter(
       (m) => m.studentId === studentObj.id,
@@ -330,16 +331,28 @@ export default function AdminPanel() {
       };
     });
 
+    // IMPLEMENTED REQUIREMENT: Override logic
+    const appliedGrandTotalMax = globalGrandTotal.toString().trim() !== "" && !isNaN(Number(globalGrandTotal))
+      ? Number(globalGrandTotal)
+      : grandTotalMax;
+
     const perc =
-      grandTotalMax > 0
-        ? ((grandTotalObt / grandTotalMax) * 100).toFixed(1)
+      appliedGrandTotalMax > 0
+        ? ((grandTotalObt / appliedGrandTotalMax) * 100).toFixed(1)
         : 0;
     const status =
-      Number(perc) >= 40 && !crossRoundFailFlag && grandTotalMax > 0
+      Number(perc) >= 40 && !crossRoundFailFlag && appliedGrandTotalMax > 0
         ? "PASS"
         : "FAIL";
 
-    return { rows, grandTotalMax, grandTotalObt, perc, status };
+    return { 
+      rows, 
+      grandTotalMax: appliedGrandTotalMax, 
+      grandTotalObt, 
+      perc, 
+      status, 
+      originalGrandTotalMax: grandTotalMax // Preserved for strict empty record filtering 
+    };
   };
 
   const getBatchAnalysisDataset = () => {
@@ -351,7 +364,7 @@ export default function AdminPanel() {
         const metrics = getSingleStudentMetrics(student);
         return { student, ...metrics };
       })
-      .filter((p) => p.grandTotalMax > 0);
+      .filter((p) => p.originalGrandTotalMax > 0); // Ensures empty subjects are NOT accidentally rendered via manual override
   };
 
   const getBulkFilteredStudentsBySequence = () => {
@@ -361,7 +374,7 @@ export default function AdminPanel() {
     if (!sequenceInput.trim())
       return currentClassList
         .map((student) => ({ student, ...getSingleStudentMetrics(student) }))
-        .filter((p) => p.grandTotalMax > 0);
+        .filter((p) => p.originalGrandTotalMax > 0);
 
     const parts = sequenceInput.split(",");
     const allowedRollNumbers = new Set();
@@ -383,7 +396,7 @@ export default function AdminPanel() {
     return currentClassList
       .filter((s) => allowedRollNumbers.has(String(s.rollNo)))
       .map((student) => ({ student, ...getSingleStudentMetrics(student) }))
-      .filter((p) => p.grandTotalMax > 0);
+      .filter((p) => p.originalGrandTotalMax > 0);
   };
 
   const bulkStudentsList =
@@ -662,6 +675,27 @@ export default function AdminPanel() {
         </header>
 
         <main className="flex-1 bg-slate-50 flex flex-col items-center justify-start p-8 overflow-y-auto custom-scrollbar">
+          
+          {/* --- GLOBAL GRAND TOTAL BOX (NO PRINT) --- */}
+          <div className="bg-white p-4 mb-6 rounded-xl shadow-sm border border-slate-200 w-[210mm] shrink-0 no-print flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-slate-800 uppercase tracking-wide text-sm">
+                Global Grand Total Override
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Leave empty to use dynamic calculation. This acts as the total marks for every student's result.
+              </p>
+            </div>
+            <input
+              type="number"
+              value={globalGrandTotal}
+              onChange={(e) => setGlobalGrandTotal(e.target.value)}
+              placeholder="Auto Calculate"
+              className="bg-slate-50 border border-slate-300 px-4 py-2 rounded-lg text-slate-900 font-black font-mono outline-none focus:border-blue-500 w-44 text-center shadow-inner"
+            />
+          </div>
+          {/* ----------------------------------------- */}
+
           {/* 1. SINGLE TRANSCRIPT MODE */}
           {activeReportMode === "single" && activeStudent && (
             <div className="bg-white w-[210mm] min-h-[297mm] p-10 border border-slate-200 shadow-xl rounded-sm print-area flex flex-col justify-between text-slate-800 select-text">
