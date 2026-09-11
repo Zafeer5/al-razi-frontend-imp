@@ -21,11 +21,12 @@ import {
   UserPlus,
   Users,
   CheckSquare,
+  Trash2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import academyLogo from "../assets/logo ac.jpg";
 
-// Exact standard spellings as provided
+// Exact standard spellings
 const OFFICIAL_SUBJECT_NAMES = [
   "Accounting",
   "Agriculture",
@@ -67,7 +68,6 @@ const OFFICIAL_SUBJECT_NAMES = [
   "Urdu",
 ];
 
-// Helper to normalize any incoming database/file spellings to the official spellings
 const normalizeSubjectName = (name) => {
   if (!name) return "";
   const cleaned = name.trim().toLowerCase();
@@ -111,7 +111,6 @@ const normalizeSubjectName = (name) => {
   return matched || name.trim();
 };
 
-// Official syllabus grouping schema as provided in image
 const CLASS_SUBJECT_GROUPS = {
   "9th": [
     ["Urdu"],
@@ -175,11 +174,10 @@ export default function AdminPanel() {
   const [students, setStudents] = useState([]);
   const [globalMarks, setGlobalMarks] = useState([]);
 
-  // ================= SUBJECT CHECKLIST PANEL STATES (BROWSER DATABASE) =================
+  // ================= SUBJECT CHECKLIST PANEL STATES =================
   const [subjectPanelClass, setSubjectPanelClass] = useState("9th");
   const [subjectSearchQuery, setSubjectSearchQuery] = useState("");
 
-  // Persistent class-wise extra checked subjects in localStorage
   const [classExtraSubjects, setClassExtraSubjects] = useState(() => {
     try {
       const saved = localStorage.getItem("alrazi_class_subjects_v3");
@@ -190,6 +188,10 @@ export default function AdminPanel() {
       return { "9th": [], "10th": [], "11th": [], "12th": [] };
     }
   });
+
+  // ================= TEMPORARY IN-MEMORY CARD EDITS =================
+  // Reset on student change or page refresh
+  const [editableCardRows, setEditableCardRows] = useState([]);
 
   useEffect(() => {
     setSubjectPanelClass(adminSelectedClass);
@@ -244,7 +246,6 @@ export default function AdminPanel() {
     "R12",
   ];
 
-  // All eligible subjects for the currently selected class checklist
   const currentClassChecklistSubjects = useMemo(() => {
     const classGroups = CLASS_SUBJECT_GROUPS[subjectPanelClass] || [];
     const baseSubjects = classGroups.flat();
@@ -358,9 +359,7 @@ export default function AdminPanel() {
       }
     } catch (error) {
       console.error("API Error:", error);
-      alert(
-        "❌ Server connection failed! Kya aapka backend chal raha hai?",
-      );
+      alert("❌ Server connection failed! Kya backend chal raha hai?");
     }
   };
 
@@ -465,7 +464,6 @@ export default function AdminPanel() {
     window.print();
   };
 
-  // Toggle subject checklist state for target class in localStorage
   const handleToggleSubjectForClass = (subjectName, targetClass) => {
     const standardName = normalizeSubjectName(subjectName);
     setClassExtraSubjects((prev) => {
@@ -484,26 +482,18 @@ export default function AdminPanel() {
     });
   };
 
-  // Compute student report metrics with unified group slots (e.g. Math / Biology)
-  const getSingleStudentMetrics = (studentObj) => {
-    if (!studentObj)
-      return { rows: [], grandTotalMax: 0, grandTotalObt: 0, perc: 0, status: "FAIL", originalGrandTotalMax: 0 };
-
-    const studentScores = globalMarks.filter(
-      (m) => m.studentId === studentObj.id,
-    );
-
+  // Generate initial rows for student report based on database records & checklist
+  const generateInitialStudentRows = (studentObj) => {
+    if (!studentObj) return [];
+    const studentScores = globalMarks.filter((m) => m.studentId === studentObj.id);
     const studentDbSubjects = studentScores.map((m) => normalizeSubjectName(m.subject));
     const extraForClass = classExtraSubjects[studentObj.class] || [];
-
-    // All active subjects considered for this class
     const activeClassSubjects = new Set([...studentDbSubjects, ...extraForClass]);
 
     const predefinedGroups = CLASS_SUBJECT_GROUPS[studentObj.class] || [];
     const groupedRowsConfig = [];
     const handledSubjects = new Set();
 
-    // 1. Process predefined syllabus elective groups
     predefinedGroups.forEach((group) => {
       const activeInGroup = group.filter((sub) => activeClassSubjects.has(sub));
       if (activeInGroup.length > 0) {
@@ -515,7 +505,6 @@ export default function AdminPanel() {
       }
     });
 
-    // 2. Add any standalone subjects not covered in standard groups
     activeClassSubjects.forEach((sub) => {
       if (!handledSubjects.has(sub)) {
         groupedRowsConfig.push({
@@ -525,24 +514,17 @@ export default function AdminPanel() {
       }
     });
 
-    let grandTotalMax = 0;
-    let grandTotalObt = 0;
-    let failedSubjectsCount = 0;
-
-    const rows = groupedRowsConfig.map(({ displayName, subjectsInGroup }) => {
+    return groupedRowsConfig.map(({ displayName, subjectsInGroup }, idx) => {
       const roundScoresMap = {};
-      let totalMaxSubject = 0;
-      let totalObtSubject = 0;
-      let foundAnyScoreInGroup = false;
+      const roundMaxMap = {};
 
       selectedRounds.forEach((r) => {
         const roundNum = Number(r.replace("R", ""));
         let matchedScore = null;
 
-        // Find match among the subjects in this elective slot
         for (const sub of subjectsInGroup) {
           const entry = studentScores.find(
-            (m) => normalizeSubjectName(m.subject) === sub && Number(m.round) === roundNum,
+            (m) => normalizeSubjectName(m.subject) === sub && Number(m.round) === roundNum
           );
           if (entry) {
             matchedScore = entry;
@@ -551,33 +533,114 @@ export default function AdminPanel() {
         }
 
         if (matchedScore) {
-          foundAnyScoreInGroup = true;
-          roundScoresMap[r] = matchedScore.obtainedMarks;
-          totalMaxSubject += matchedScore.totalMarks;
-          totalObtSubject += matchedScore.obtainedMarks;
+          roundScoresMap[r] = String(matchedScore.obtainedMarks);
+          roundMaxMap[r] = matchedScore.totalMarks || 30;
         } else {
           roundScoresMap[r] = "—";
+          roundMaxMap[r] = 30;
         }
       });
 
-      grandTotalMax += totalMaxSubject;
-      grandTotalObt += totalObtSubject;
+      return {
+        id: `row-${idx}-${Date.now()}`,
+        subjectName: displayName,
+        rounds: roundScoresMap,
+        roundMaxMap: roundMaxMap,
+      };
+    });
+  };
 
-      const subPercentage =
-        totalMaxSubject > 0 ? (totalObtSubject / totalMaxSubject) * 100 : 0;
-      const subjectStatus = totalMaxSubject === 0 ? "—" : subPercentage >= 40 ? "PASS" : "FAIL";
+  // Whenever activeStudent, rounds, or class extra subjects update, re-initialize editableCardRows
+  useEffect(() => {
+    if (activeStudent) {
+      setEditableCardRows(generateInitialStudentRows(activeStudent));
+    } else {
+      setEditableCardRows([]);
+    }
+  }, [activeStudent, selectedRounds, classExtraSubjects]);
 
-      if (subjectStatus === "FAIL") {
+  // Handle in-place editing of card table cells
+  const handleCellSubjectChange = (rowIndex, value) => {
+    setEditableCardRows((prev) => {
+      const copy = [...prev];
+      copy[rowIndex] = { ...copy[rowIndex], subjectName: value };
+      return copy;
+    });
+  };
+
+  const handleCellRoundChange = (rowIndex, roundKey, value) => {
+    setEditableCardRows((prev) => {
+      const copy = [...prev];
+      const updatedRounds = { ...copy[rowIndex].rounds, [roundKey]: value };
+      copy[rowIndex] = { ...copy[rowIndex], rounds: updatedRounds };
+      return copy;
+    });
+  };
+
+  // Add a new empty row to the card
+  const handleAddNewRow = () => {
+    const emptyRounds = {};
+    const defaultMaxMap = {};
+    selectedRounds.forEach((r) => {
+      emptyRounds[r] = "—";
+      defaultMaxMap[r] = 30;
+    });
+
+    setEditableCardRows((prev) => [
+      ...prev,
+      {
+        id: `custom-row-${Date.now()}`,
+        subjectName: "NEW SUBJECT",
+        rounds: emptyRounds,
+        roundMaxMap: defaultMaxMap,
+      },
+    ]);
+  };
+
+  // Remove a row
+  const handleDeleteRow = (rowIndex) => {
+    setEditableCardRows((prev) => prev.filter((_, idx) => idx !== rowIndex));
+  };
+
+  // Dynamic calculations on the editable rows
+  const activeReportCardCalculations = useMemo(() => {
+    let grandTotalMax = 0;
+    let grandTotalObt = 0;
+    let failedSubjectsCount = 0;
+
+    const computedRows = editableCardRows.map((row) => {
+      let subjectMax = 0;
+      let subjectObt = 0;
+      let hasValidScore = false;
+
+      selectedRounds.forEach((r) => {
+        const val = row.rounds[r];
+        const numVal = parseFloat(val);
+        const maxForRound = row.roundMaxMap?.[r] || 30;
+
+        if (!isNaN(numVal) && val !== "—" && val !== "") {
+          hasValidScore = true;
+          subjectObt += numVal;
+          subjectMax += maxForRound;
+        }
+      });
+
+      grandTotalMax += subjectMax;
+      grandTotalObt += subjectObt;
+
+      const subPercentage = subjectMax > 0 ? (subjectObt / subjectMax) * 100 : 0;
+      const status = subjectMax === 0 ? "—" : subPercentage >= 40 ? "PASS" : "FAIL";
+
+      if (status === "FAIL") {
         failedSubjectsCount += 1;
       }
 
       return {
-        subjectName: displayName,
-        rounds: roundScoresMap,
-        totalMax: totalMaxSubject,
-        totalObt: totalObtSubject,
-        status: subjectStatus,
-        hasRecord: foundAnyScoreInGroup,
+        ...row,
+        totalMax: subjectMax,
+        totalObt: subjectObt,
+        status,
+        hasValidScore,
       };
     });
 
@@ -591,22 +654,90 @@ export default function AdminPanel() {
         ? ((grandTotalObt / appliedGrandTotalMax) * 100).toFixed(1)
         : 0;
 
-    const evaluatedSubjects = rows.filter((r) => r.hasRecord || r.totalMax > 0);
-    const totalSubjectsCount = evaluatedSubjects.length;
+    const evaluatedCount = computedRows.filter((r) => r.totalMax > 0).length;
     const isFailedInMajority =
-      totalSubjectsCount > 0 && failedSubjectsCount >= totalSubjectsCount / 2;
+      evaluatedCount > 0 && failedSubjectsCount >= evaluatedCount / 2;
 
-    const status =
+    const overallStatus =
       Number(perc) >= 40 && !isFailedInMajority && appliedGrandTotalMax > 0
         ? "PASS"
         : "FAIL";
 
     return {
-      rows,
+      rows: computedRows,
       grandTotalMax: appliedGrandTotalMax,
       grandTotalObt,
       perc,
-      status,
+      status: overallStatus,
+      originalGrandTotalMax: grandTotalMax,
+    };
+  }, [editableCardRows, selectedRounds, globalGrandTotal]);
+
+  // Bulk student computations
+  const getSingleStudentMetrics = (studentObj) => {
+    if (!studentObj)
+      return { rows: [], grandTotalMax: 0, grandTotalObt: 0, perc: 0, status: "FAIL", originalGrandTotalMax: 0 };
+
+    const rows = generateInitialStudentRows(studentObj);
+    let grandTotalMax = 0;
+    let grandTotalObt = 0;
+    let failedSubjectsCount = 0;
+
+    const computedRows = rows.map((row) => {
+      let subjectMax = 0;
+      let subjectObt = 0;
+
+      selectedRounds.forEach((r) => {
+        const val = row.rounds[r];
+        const numVal = parseFloat(val);
+        const maxForRound = row.roundMaxMap?.[r] || 30;
+        if (!isNaN(numVal) && val !== "—") {
+          subjectObt += numVal;
+          subjectMax += maxForRound;
+        }
+      });
+
+      grandTotalMax += subjectMax;
+      grandTotalObt += subjectObt;
+
+      const subPercentage = subjectMax > 0 ? (subjectObt / subjectMax) * 100 : 0;
+      const status = subjectMax === 0 ? "—" : subPercentage >= 40 ? "PASS" : "FAIL";
+      if (status === "FAIL") failedSubjectsCount++;
+
+      return {
+        subjectName: row.subjectName,
+        rounds: row.rounds,
+        totalMax: subjectMax,
+        totalObt: subjectObt,
+        status,
+      };
+    });
+
+    const appliedGrandTotalMax =
+      globalGrandTotal.toString().trim() !== "" && !isNaN(Number(globalGrandTotal))
+        ? Number(globalGrandTotal)
+        : grandTotalMax;
+
+    const perc =
+      appliedGrandTotalMax > 0
+        ? ((grandTotalObt / appliedGrandTotalMax) * 100).toFixed(1)
+        : 0;
+
+    const evaluatedCount = computedRows.filter((r) => r.totalMax > 0).length;
+    const isFailedInMajority =
+      evaluatedCount > 0 && failedSubjectsCount >= evaluatedCount / 2;
+
+    const overallStatus =
+      Number(perc) >= 40 && !isFailedInMajority && appliedGrandTotalMax > 0
+        ? "PASS"
+        : "FAIL";
+
+    return {
+      rows: computedRows,
+      grandTotalMax: appliedGrandTotalMax,
+      grandTotalObt,
+      perc,
+      status: overallStatus,
       originalGrandTotalMax: grandTotalMax,
     };
   };
@@ -685,16 +816,13 @@ export default function AdminPanel() {
   const gazetteRecords = getBatchAnalysisDataset().sort(
     (a, b) => Number(a.student.rollNo) - Number(b.student.rollNo),
   );
-  const reportCard = getSingleStudentMetrics(activeStudent);
 
-  // Active student's marks database recorded subjects
   const activeStudentOriginalSubjects = useMemo(() => {
     if (!activeStudent) return new Set();
     const scores = globalMarks.filter((m) => m.studentId === activeStudent.id);
     return new Set(scores.map((m) => normalizeSubjectName(m.subject)));
   }, [activeStudent, globalMarks]);
 
-  // Shortlisted and filtered checklist subjects
   const processedSubjectChecklist = useMemo(() => {
     const q = subjectSearchQuery.trim().toLowerCase();
     let list = [...currentClassChecklistSubjects];
@@ -751,7 +879,7 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans antialiased flex h-screen overflow-hidden">
-      {/* PRINT STYLES */}
+      {/* ===================== PRINT CSS ===================== */}
       <style>{`
         @page {
           size: A4;
@@ -771,8 +899,20 @@ export default function AdminPanel() {
           .h-screen { height: auto !important; }
           .overflow-hidden { overflow: visible !important; }
 
-          aside, header, .no-print, button {
+          aside, header, .no-print, button, .delete-row-btn {
             display: none !important;
+          }
+
+          /* Remove input borders and styles in print so it looks like raw table text */
+          .editable-card-input {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
+            text-align: inherit !important;
+            width: 100% !important;
           }
 
           .main-canvas-wrapper {
@@ -979,7 +1119,7 @@ export default function AdminPanel() {
             />
           </div>
 
-          {/* 1. SINGLE TRANSCRIPT MODE */}
+          {/* 1. SINGLE TRANSCRIPT MODE (WITH EDITABLE CARD) */}
           {activeReportMode === "single" && activeStudent && (
             <div className="flex items-start justify-center gap-6 w-full max-w-[290mm]">
               {/* LEFT SUBJECT CHECKLIST PANEL (NO-PRINT) */}
@@ -1044,7 +1184,7 @@ export default function AdminPanel() {
                 </div>
 
                 {/* Scrollable Checklist */}
-                <div className="space-y-1 max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
+                <div className="space-y-1 max-h-[440px] overflow-y-auto pr-1 custom-scrollbar">
                   {processedSubjectChecklist.map((sub) => {
                     const isFromStudentOriginal =
                       activeStudent.class === subjectPanelClass &&
@@ -1080,7 +1220,7 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-                  💡 <strong>Elective Note:</strong> Alternative subjects (e.g. <code>Math / Biology</code>) automatically align together into the same result card slot.
+                  ✍️ <strong>Editable Mode Active:</strong> Table mein Subject name aur Round marks direct click karke change karein. Page refresh ya student badalne par reset ho jayega.
                 </div>
               </div>
 
@@ -1139,7 +1279,7 @@ export default function AdminPanel() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-900 font-medium text-slate-700">
-                      {reportCard.rows.length === 0 ? (
+                      {activeReportCardCalculations.rows.length === 0 ? (
                         <tr>
                           <td
                             colSpan={selectedRounds.length + 4}
@@ -1149,25 +1289,52 @@ export default function AdminPanel() {
                           </td>
                         </tr>
                       ) : (
-                        reportCard.rows.map((row, idx) => (
-                          <tr key={idx} className="border-b border-slate-900">
-                            <td className="p-3 border-r border-slate-900 font-bold uppercase">
-                              {row.subjectName}
+                        activeReportCardCalculations.rows.map((row, idx) => (
+                          <tr key={row.id || idx} className="border-b border-slate-900 group">
+                            {/* EDITABLE SUBJECT NAME */}
+                            <td className="p-2 border-r border-slate-900 font-bold uppercase relative">
+                              <input
+                                type="text"
+                                value={row.subjectName}
+                                onChange={(e) => handleCellSubjectChange(idx, e.target.value)}
+                                className="editable-card-input w-full bg-transparent outline-none font-bold uppercase text-slate-900 focus:bg-blue-50/50 rounded px-1 transition-colors"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRow(idx)}
+                                title="Remove row"
+                                className="delete-row-btn absolute right-1 top-2.5 text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </td>
+
+                            {/* EDITABLE ROUNDS */}
                             {selectedRounds.map((r) => (
                               <td
                                 key={r}
-                                className="p-3 border-r border-slate-900 text-center font-mono font-bold text-slate-800"
+                                className="p-2 border-r border-slate-900 text-center font-mono font-bold text-slate-800"
                               >
-                                {row.rounds[r]}
+                                <input
+                                  type="text"
+                                  value={row.rounds[r] ?? "—"}
+                                  onChange={(e) => handleCellRoundChange(idx, r, e.target.value)}
+                                  className="editable-card-input w-full text-center bg-transparent outline-none font-mono font-bold text-slate-800 focus:bg-blue-50/50 rounded px-0.5 transition-colors"
+                                />
                               </td>
                             ))}
+
+                            {/* AUTO CALCULATED TOTAL FOR ROW */}
                             <td className="p-3 border-r border-slate-900 text-center font-bold text-slate-500">
                               {row.totalMax}
                             </td>
+
+                            {/* AUTO CALCULATED OBTAINED FOR ROW */}
                             <td className="p-3 border-r border-slate-900 text-center font-black text-slate-900 text-sm">
                               {row.totalObt}
                             </td>
+
+                            {/* AUTO CALCULATED STATUS FOR ROW */}
                             <td className="p-3 text-center">
                               <span
                                 className={`px-2 py-0.5 rounded font-black text-[10px] ${
@@ -1184,6 +1351,8 @@ export default function AdminPanel() {
                           </tr>
                         ))
                       )}
+
+                      {/* GRAND TOTAL ROW */}
                       <tr className="bg-slate-50 font-black border-t-2 border-slate-900 text-slate-900">
                         <td className="p-3 border-r border-slate-900">
                           GRAND TOTAL
@@ -1195,23 +1364,37 @@ export default function AdminPanel() {
                           />
                         ))}
                         <td className="p-3 border-r border-slate-900 text-center text-slate-500">
-                          {reportCard.grandTotalMax}
+                          {activeReportCardCalculations.grandTotalMax}
                         </td>
                         <td className="p-3 border-r border-slate-900 text-center text-sm font-black text-blue-900">
-                          {reportCard.grandTotalObt}
+                          {activeReportCardCalculations.grandTotalObt}
                         </td>
                         <td className="p-3 text-center">
                           <span
                             className={`px-3 py-1 rounded font-black text-xs ${
-                              reportCard.status === "PASS" ? "text-emerald-600" : "text-rose-600"
+                              activeReportCardCalculations.status === "PASS"
+                                ? "text-emerald-600"
+                                : "text-rose-600"
                             }`}
                           >
-                            {reportCard.status} ({reportCard.perc}%)
+                            {activeReportCardCalculations.status} ({activeReportCardCalculations.perc}%)
                           </span>
                         </td>
                       </tr>
                     </tbody>
                   </table>
+
+                  {/* + ADD ROW ACTION BUTTON (NO-PRINT) */}
+                  <div className="mt-3 flex justify-end no-print">
+                    <button
+                      type="button"
+                      onClick={handleAddNewRow}
+                      className="flex items-center space-x-1.5 text-xs font-bold px-3 py-1.5 bg-blue-50 text-[#1e3a8a] hover:bg-blue-100 rounded-lg border border-blue-200 shadow-sm transition-all active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Row</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-20 pt-6 flex items-end justify-between text-[11px] font-bold text-slate-700">
