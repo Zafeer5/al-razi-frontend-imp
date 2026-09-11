@@ -293,7 +293,7 @@ export default function AdminPanel() {
 
     let grandTotalMax = 0;
     let grandTotalObt = 0;
-    let crossRoundFailFlag = false;
+    let failedSubjectsCount = 0;
 
     const rows = uniqueStudentSubjects.map((sub) => {
       const roundScoresMap = {};
@@ -320,7 +320,9 @@ export default function AdminPanel() {
       const subPercentage =
         totalMaxSubject > 0 ? (totalObtSubject / totalMaxSubject) * 100 : 0;
       const subjectStatus = subPercentage >= 40 ? "PASS" : "FAIL";
-      if (subjectStatus === "FAIL") crossRoundFailFlag = true;
+      if (subjectStatus === "FAIL") {
+        failedSubjectsCount += 1;
+      }
 
       return {
         subjectName: sub,
@@ -331,7 +333,7 @@ export default function AdminPanel() {
       };
     });
 
-    // IMPLEMENTED REQUIREMENT: Override logic
+    // Override logic
     const appliedGrandTotalMax = globalGrandTotal.toString().trim() !== "" && !isNaN(Number(globalGrandTotal))
       ? Number(globalGrandTotal)
       : grandTotalMax;
@@ -340,8 +342,13 @@ export default function AdminPanel() {
       appliedGrandTotalMax > 0
         ? ((grandTotalObt / appliedGrandTotalMax) * 100).toFixed(1)
         : 0;
+
+    // Fail only if failed in half or more of the subjects, or if overall percentage is below 40%
+    const totalSubjectsCount = rows.length;
+    const isFailedInMajority = totalSubjectsCount > 0 && failedSubjectsCount >= totalSubjectsCount / 2;
+
     const status =
-      Number(perc) >= 40 && !crossRoundFailFlag && appliedGrandTotalMax > 0
+      Number(perc) >= 40 && !isFailedInMajority && appliedGrandTotalMax > 0
         ? "PASS"
         : "FAIL";
 
@@ -351,7 +358,7 @@ export default function AdminPanel() {
       grandTotalObt, 
       perc, 
       status, 
-      originalGrandTotalMax: grandTotalMax // Preserved for strict empty record filtering 
+      originalGrandTotalMax: grandTotalMax
     };
   };
 
@@ -364,7 +371,7 @@ export default function AdminPanel() {
         const metrics = getSingleStudentMetrics(student);
         return { student, ...metrics };
       })
-      .filter((p) => p.originalGrandTotalMax > 0); // Ensures empty subjects are NOT accidentally rendered via manual override
+      .filter((p) => p.originalGrandTotalMax > 0);
   };
 
   const getBulkFilteredStudentsBySequence = () => {
@@ -483,17 +490,14 @@ export default function AdminPanel() {
             overflow: visible !important;
           }
 
-          /* Taki bulk pages cut na hon (Tailwind classes override) */
           .min-h-screen { min-height: 0 !important; }
           .h-screen { height: auto !important; }
           .overflow-hidden { overflow: visible !important; }
 
-          /* Sidebar, header, buttons sab hide */
           aside, header, .no-print, button {
             display: none !important;
           }
 
-          /* Main wrapper — flex hatao, block karo */
           .main-canvas-wrapper {
             display: block !important;
             overflow: visible !important;
@@ -501,7 +505,6 @@ export default function AdminPanel() {
             width: 100% !important;
           }
 
-          /* main element override */
           main {
             display: block !important;
             overflow: visible !important;
@@ -510,14 +513,11 @@ export default function AdminPanel() {
             background: white !important;
           }
 
-          /* Bulk wrapper — flex se block otherwise page-break kaam nahi karta */
           .bulk-print-wrapper {
             display: block !important;
             width: 100% !important;
           }
 
-          /* Har ek print-area = ek perfect A4 page, 
-             display:flex with flex-col rakha gaya hai taa kay bottom elements neechay hi rahain! */
           .print-area {
             display: flex !important;
             flex-direction: column !important;
@@ -828,7 +828,7 @@ export default function AdminPanel() {
             </div>
           )}
 
-          {/* 2. BULK PRINT MODE — bulk-print-wrapper class added for print fix */}
+          {/* 2. BULK PRINT MODE */}
           {activeReportMode === "bulk" && (
             <div className="w-full flex flex-col items-center bulk-print-wrapper">
               {bulkStudentsList.length === 0 ? (
