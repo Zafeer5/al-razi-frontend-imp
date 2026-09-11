@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -20,9 +20,27 @@ import {
   Upload,
   UserPlus,
   Users,
+  CheckSquare,
+  BookOpen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import academyLogo from "../assets/logo ac.jpg";
+
+// Pre-defined standard syllabus subjects
+const DEFAULT_ALL_SUBJECTS = [
+  "URDU",
+  "ENGLISH",
+  "MATHEMATICS",
+  "PHYSICS",
+  "CHEMISTRY",
+  "BIOLOGY",
+  "COMPUTER SCIENCE",
+  "ISLAMIYAT",
+  "TARJUMA-TUL-QURAN",
+  "PAKISTAN STUDIES",
+  "GENERAL SCIENCE",
+  "ETHICS",
+];
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -45,6 +63,32 @@ export default function AdminPanel() {
 
   const [students, setStudents] = useState([]);
   const [globalMarks, setGlobalMarks] = useState([]);
+
+  // ================= SUBJECT CHECKLIST PANEL STATES (BROWSER DATABASE) =================
+  const [subjectPanelClass, setSubjectPanelClass] = useState("9th");
+  const [subjectSearchQuery, setSubjectSearchQuery] = useState("");
+  const [classExtraSubjects, setClassExtraSubjects] = useState(() => {
+    try {
+      const saved = localStorage.getItem("alrazi_class_subjects");
+      return saved ? JSON.parse(saved) : { "9th": [], "10th": [], "11th": [], "12th": [] };
+    } catch {
+      return { "9th": [], "10th": [], "11th": [], "12th": [] };
+    }
+  });
+
+  // Sync Subject Panel class with Main Selected Class whenever it changes
+  useEffect(() => {
+    setSubjectPanelClass(adminSelectedClass);
+  }, [adminSelectedClass]);
+
+  // Persist classExtraSubjects to browser database (localStorage)
+  useEffect(() => {
+    try {
+      localStorage.setItem("alrazi_class_subjects", JSON.stringify(classExtraSubjects));
+    } catch (err) {
+      console.error("Failed to save subjects to localStorage", err);
+    }
+  }, [classExtraSubjects]);
 
   useEffect(() => {
     fetch("https://al-razi-backend-imp.onrender.com/api/students")
@@ -86,6 +130,16 @@ export default function AdminPanel() {
     "R11",
     "R12",
   ];
+
+  // Master list of all known subjects across database + default subjects
+  const masterSubjectsList = useMemo(() => {
+    const fromMarks = globalMarks.map((m) => String(m.subject || "").trim().toUpperCase()).filter(Boolean);
+    const set = new Set([...DEFAULT_ALL_SUBJECTS, ...fromMarks]);
+    Object.values(classExtraSubjects).forEach((arr) => {
+      arr.forEach((s) => set.add(s.toUpperCase()));
+    });
+    return Array.from(set).sort();
+  }, [globalMarks, classExtraSubjects]);
 
   const getActiveRollNoRange = () => {
     const activeClassStudents = students.filter(
@@ -137,7 +191,6 @@ export default function AdminPanel() {
   const handleSingleSubmit = async (e) => {
     e.preventDefault();
 
-    // Default fallback values if empty
     const finalFatherName = formData.fatherName.trim() || "NA";
     const finalPhone = formData.phone.trim() || "NA";
     const finalDob = formData.dob.trim() || "2000-01-01";
@@ -290,6 +343,26 @@ export default function AdminPanel() {
     window.print();
   };
 
+  // Toggle subject on/off for selected class in browser database
+  const handleToggleSubjectForClass = (subjectName, targetClass) => {
+    const upperSub = subjectName.toUpperCase().trim();
+    setClassExtraSubjects((prev) => {
+      const currentList = prev[targetClass] || [];
+      if (currentList.includes(upperSub)) {
+        return {
+          ...prev,
+          [targetClass]: currentList.filter((s) => s !== upperSub),
+        };
+      } else {
+        return {
+          ...prev,
+          [targetClass]: [...currentList, upperSub],
+        };
+      }
+    });
+  };
+
+  // Helper to calculate student report card metrics including dynamically checked subjects
   const getSingleStudentMetrics = (studentObj) => {
     if (!studentObj)
       return { rows: [], grandTotalMax: 0, grandTotalObt: 0, perc: 0, status: "FAIL", originalGrandTotalMax: 0 };
@@ -297,15 +370,20 @@ export default function AdminPanel() {
     const studentScores = globalMarks.filter(
       (m) => m.studentId === studentObj.id,
     );
-    const uniqueStudentSubjects = [
+    const dbStudentSubjects = [
       ...new Set(studentScores.map((m) => m.subject)),
     ];
+
+    const extraSubjectsForClass = classExtraSubjects[studentObj.class] || [];
+    const combinedSubjects = Array.from(
+      new Set([...dbStudentSubjects, ...extraSubjectsForClass]),
+    );
 
     let grandTotalMax = 0;
     let grandTotalObt = 0;
     let failedSubjectsCount = 0;
 
-    const rows = uniqueStudentSubjects.map((sub) => {
+    const rows = combinedSubjects.map((sub) => {
       const roundScoresMap = {};
       let totalMaxSubject = 0;
       let totalObtSubject = 0;
@@ -445,6 +523,31 @@ export default function AdminPanel() {
     (a, b) => Number(a.student.rollNo) - Number(b.student.rollNo),
   );
   const reportCard = getSingleStudentMetrics(activeStudent);
+
+  // Determine subjects existing inherently in the active student's marks database
+  const activeStudentOriginalSubjects = useMemo(() => {
+    if (!activeStudent) return new Set();
+    const scores = globalMarks.filter((m) => m.studentId === activeStudent.id);
+    return new Set(scores.map((m) => m.subject.toUpperCase()));
+  }, [activeStudent, globalMarks]);
+
+  // Filtered and Shortlisted subject list for checklist
+  const processedSubjectChecklist = useMemo(() => {
+    const q = subjectSearchQuery.trim().toUpperCase();
+    let list = [...masterSubjectsList];
+
+    if (q && !list.includes(q)) {
+      list = [q, ...list];
+    }
+
+    return list.sort((a, b) => {
+      const aMatches = q ? a.includes(q) : false;
+      const bMatches = q ? b.includes(q) : false;
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+      return a.localeCompare(b);
+    });
+  }, [masterSubjectsList, subjectSearchQuery]);
 
   const renderMasterHeader = (reportTitleText) => (
     <div className="w-full flex flex-col mb-6">
@@ -703,135 +806,237 @@ export default function AdminPanel() {
             />
           </div>
 
-          {/* 1. SINGLE TRANSCRIPT MODE */}
+          {/* 1. SINGLE TRANSCRIPT MODE (WITH LEFT SUBJECT CHECKLIST PANEL) */}
           {activeReportMode === "single" && activeStudent && (
-            <div className="bg-white w-[210mm] min-h-[297mm] p-10 border border-slate-200 shadow-xl rounded-sm print-area flex flex-col justify-between text-slate-800 select-text">
-              <div>
-                {renderMasterHeader()}
-                <div className="border border-slate-900 grid grid-cols-4 text-xs font-bold bg-slate-50 text-slate-700 divide-x divide-slate-900 mb-6">
-                  <div className="p-2.5">
-                    NAME:{" "}
-                    <span className="font-black text-slate-900 uppercase truncate">
-                      {activeStudent.firstName} {activeStudent.lastName}
-                    </span>
-                  </div>
-                  <div className="p-2.5">
-                    ROLL#:{" "}
-                    <span className="font-mono font-black text-slate-900">
-                      {activeStudent.rollNo}
-                    </span>
-                  </div>
-                  <div className="p-2.5">
-                    CLASS:{" "}
-                    <span className="font-black text-slate-900 uppercase">
-                      {activeStudent.class}
-                    </span>
-                  </div>
-                  <div className="p-2.5 truncate">
-                    ROUNDS:{" "}
-                    <span className="font-mono font-black text-slate-900">
-                      {selectedRounds.map((r) => r.replace("R", "")).join(", ")}
-                    </span>
+            <div className="flex items-start justify-center gap-6 w-full max-w-[290mm]">
+              
+              {/* ================= LEFT SUBJECTS CHECKLIST PANEL (NO-PRINT) ================= */}
+              <div className="w-64 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 shrink-0 no-print flex flex-col">
+                <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 mb-3">
+                  <CheckSquare className="w-4 h-4 text-blue-700" />
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    Manage Subjects
+                  </h3>
+                </div>
+
+                {/* Class Select Buttons */}
+                <div className="mb-3">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                    Target Class:
+                  </label>
+                  <div className="grid grid-cols-4 gap-1">
+                    {classesList.map((c) => {
+                      const isSelected = subjectPanelClass === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setSubjectPanelClass(c);
+                            setAdminSelectedClass(c);
+                          }}
+                          className={`py-1.5 text-[11px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-[#1e3a8a] text-white border-[#1e3a8a] shadow-sm"
+                              : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                <table className="w-full border border-slate-900 text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 font-black text-slate-800 uppercase border-b border-slate-900">
-                      <th className="p-3 border-r border-slate-900 text-left w-[35%]">
-                        SUBJECT
-                      </th>
-                      {selectedRounds.map((r) => (
-                        <th
-                          key={r}
-                          className="p-3 border-r border-slate-900 text-center font-mono w-[12%]"
-                        >
-                          {r}
+
+                {/* Subject Search / Add Bar */}
+                <div className="relative mb-3">
+                  <input
+                    type="text"
+                    value={subjectSearchQuery}
+                    onChange={(e) => setSubjectSearchQuery(e.target.value)}
+                    placeholder="Search / Add Subject..."
+                    className="w-full bg-slate-100 text-slate-800 text-xs py-2 pl-3 pr-8 rounded-xl outline-none font-medium border border-transparent focus:border-blue-400 focus:bg-white"
+                  />
+                  <div className="absolute right-2.5 top-2.5 text-slate-400">
+                    <Search className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-400 font-semibold mb-2 uppercase tracking-wide">
+                  Subjects for {subjectPanelClass} Class
+                </p>
+
+                {/* Scrollable Checklist */}
+                <div className="space-y-1 max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
+                  {processedSubjectChecklist.map((sub) => {
+                    const isFromStudentOriginal =
+                      activeStudent.class === subjectPanelClass &&
+                      activeStudentOriginalSubjects.has(sub);
+
+                    const isClassExtra = (classExtraSubjects[subjectPanelClass] || []).includes(sub);
+                    const isChecked = isFromStudentOriginal || isClassExtra;
+
+                    return (
+                      <label
+                        key={sub}
+                        className={`flex items-center justify-between p-2 rounded-xl text-xs transition-colors select-none ${
+                          isFromStudentOriginal
+                            ? "bg-slate-100/80 text-slate-400 cursor-not-allowed border border-slate-200/50"
+                            : isChecked
+                            ? "bg-blue-50 text-blue-900 font-bold border border-blue-200 cursor-pointer"
+                            : "hover:bg-slate-50 text-slate-700 border border-transparent cursor-pointer"
+                        }`}
+                      >
+                        <span className="truncate mr-2 uppercase text-[11px] font-semibold">
+                          {sub}
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={isFromStudentOriginal}
+                          onChange={() => handleToggleSubjectForClass(sub, subjectPanelClass)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-0 cursor-pointer disabled:cursor-not-allowed"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-3 pt-2.5 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
+                  💡 <span className="font-semibold text-slate-500">Note:</span> Original marks subjects pre-checked aur locked hain. Extra subjects har student ke result card par add rahenge jab tak uncheck na hon.
+                </div>
+              </div>
+
+              {/* ================= SINGLE RESULT CARD (PRINTABLE) ================= */}
+              <div className="bg-white w-[210mm] min-h-[297mm] p-10 border border-slate-200 shadow-xl rounded-sm print-area flex flex-col justify-between text-slate-800 select-text shrink-0">
+                <div>
+                  {renderMasterHeader()}
+                  <div className="border border-slate-900 grid grid-cols-4 text-xs font-bold bg-slate-50 text-slate-700 divide-x divide-slate-900 mb-6">
+                    <div className="p-2.5">
+                      NAME:{" "}
+                      <span className="font-black text-slate-900 uppercase truncate">
+                        {activeStudent.firstName} {activeStudent.lastName}
+                      </span>
+                    </div>
+                    <div className="p-2.5">
+                      ROLL#:{" "}
+                      <span className="font-mono font-black text-slate-900">
+                        {activeStudent.rollNo}
+                      </span>
+                    </div>
+                    <div className="p-2.5">
+                      CLASS:{" "}
+                      <span className="font-black text-slate-900 uppercase">
+                        {activeStudent.class}
+                      </span>
+                    </div>
+                    <div className="p-2.5 truncate">
+                      ROUNDS:{" "}
+                      <span className="font-mono font-black text-slate-900">
+                        {selectedRounds.map((r) => r.replace("R", "")).join(", ")}
+                      </span>
+                    </div>
+                  </div>
+                  <table className="w-full border border-slate-900 text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 font-black text-slate-800 uppercase border-b border-slate-900">
+                        <th className="p-3 border-r border-slate-900 text-left w-[35%]">
+                          SUBJECT
                         </th>
-                      ))}
-                      <th className="p-3 border-r border-slate-900 text-center w-[12%]">
-                        TOTAL
-                      </th>
-                      <th className="p-3 border-r border-slate-900 text-center w-[12%]">
-                        OBT.
-                      </th>
-                      <th className="p-3 text-center w-[15%]">STATUS</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-900 font-medium text-slate-700">
-                    {reportCard.rows.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={selectedRounds.length + 4}
-                          className="p-8 text-center text-slate-400 italic bg-slate-50/50"
-                        >
-                          No record of this student exists in the database.
-                        </td>
+                        {selectedRounds.map((r) => (
+                          <th
+                            key={r}
+                            className="p-3 border-r border-slate-900 text-center font-mono w-[12%]"
+                          >
+                            {r}
+                          </th>
+                        ))}
+                        <th className="p-3 border-r border-slate-900 text-center w-[12%]">
+                          TOTAL
+                        </th>
+                        <th className="p-3 border-r border-slate-900 text-center w-[12%]">
+                          OBT.
+                        </th>
+                        <th className="p-3 text-center w-[15%]">STATUS</th>
                       </tr>
-                    ) : (
-                      reportCard.rows.map((row, idx) => (
-                        <tr key={idx} className="border-b border-slate-900">
-                          <td className="p-3 border-r border-slate-900 font-bold uppercase">
-                            {row.subjectName}
-                          </td>
-                          {selectedRounds.map((r) => (
-                            <td
-                              key={r}
-                              className="p-3 border-r border-slate-900 text-center font-mono font-bold text-slate-800"
-                            >
-                              {row.rounds[r]}
-                            </td>
-                          ))}
-                          <td className="p-3 border-r border-slate-900 text-center font-bold text-slate-500">
-                            {row.totalMax}
-                          </td>
-                          <td className="p-3 border-r border-slate-900 text-center font-black text-slate-900 text-sm">
-                            {row.totalObt}
-                          </td>
-                          <td className="p-3 text-center">
-                            <span
-                              className={`px-2 py-0.5 rounded font-black text-[10px] ${row.status === "PASS" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
-                            >
-                              {row.status}
-                            </span>
+                    </thead>
+                    <tbody className="divide-y divide-slate-900 font-medium text-slate-700">
+                      {reportCard.rows.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={selectedRounds.length + 4}
+                            className="p-8 text-center text-slate-400 italic bg-slate-50/50"
+                          >
+                            No record of this student exists in the database.
                           </td>
                         </tr>
-                      ))
-                    )}
-                    <tr className="bg-slate-50 font-black border-t-2 border-slate-900 text-slate-900">
-                      <td className="p-3 border-r border-slate-900">
-                        GRAND TOTAL
-                      </td>
-                      {selectedRounds.map((r) => (
-                        <td
-                          key={r}
-                          className="p-3 border-r border-slate-900 bg-slate-100/40"
-                        />
-                      ))}
-                      <td className="p-3 border-r border-slate-900 text-center text-slate-500">
-                        {reportCard.grandTotalMax}
-                      </td>
-                      <td className="p-3 border-r border-slate-900 text-center text-sm font-black text-blue-900">
-                        {reportCard.grandTotalObt}
-                      </td>
-                      <td className="p-3 text-center">
-                        <span
-                          className={`px-3 py-1 rounded font-black text-xs ${reportCard.status === "PASS" ? "text-emerald-600" : "text-rose-600"}`}
-                        >
-                          {reportCard.status} ({reportCard.perc}%)
-                        </span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-20 pt-6 flex items-end justify-between text-[11px] font-bold text-slate-700">
-                <div className="w-48 border-b border-dotted border-slate-400 pb-1">
-                  REMARKS:{" "}
+                      ) : (
+                        reportCard.rows.map((row, idx) => (
+                          <tr key={idx} className="border-b border-slate-900">
+                            <td className="p-3 border-r border-slate-900 font-bold uppercase">
+                              {row.subjectName}
+                            </td>
+                            {selectedRounds.map((r) => (
+                              <td
+                                key={r}
+                                className="p-3 border-r border-slate-900 text-center font-mono font-bold text-slate-800"
+                              >
+                                {row.rounds[r]}
+                              </td>
+                            ))}
+                            <td className="p-3 border-r border-slate-900 text-center font-bold text-slate-500">
+                              {row.totalMax}
+                            </td>
+                            <td className="p-3 border-r border-slate-900 text-center font-black text-slate-900 text-sm">
+                              {row.totalObt}
+                            </td>
+                            <td className="p-3 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded font-black text-[10px] ${row.status === "PASS" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+                              >
+                                {row.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                      <tr className="bg-slate-50 font-black border-t-2 border-slate-900 text-slate-900">
+                        <td className="p-3 border-r border-slate-900">
+                          GRAND TOTAL
+                        </td>
+                        {selectedRounds.map((r) => (
+                          <td
+                            key={r}
+                            className="p-3 border-r border-slate-900 bg-slate-100/40"
+                          />
+                        ))}
+                        <td className="p-3 border-r border-slate-900 text-center text-slate-500">
+                          {reportCard.grandTotalMax}
+                        </td>
+                        <td className="p-3 border-r border-slate-900 text-center text-sm font-black text-blue-900">
+                          {reportCard.grandTotalObt}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span
+                            className={`px-3 py-1 rounded font-black text-xs ${reportCard.status === "PASS" ? "text-emerald-600" : "text-rose-600"}`}
+                          >
+                            {reportCard.status} ({reportCard.perc}%)
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-                <div className="w-44 border-t border-slate-900 text-center pt-1.5 uppercase font-black">
-                  PRINCIPAL
+                <div className="mt-20 pt-6 flex items-end justify-between text-[11px] font-bold text-slate-700">
+                  <div className="w-48 border-b border-dotted border-slate-400 pb-1">
+                    REMARKS:{" "}
+                  </div>
+                  <div className="w-44 border-t border-slate-900 text-center pt-1.5 uppercase font-black">
+                    PRINCIPAL
+                  </div>
                 </div>
               </div>
+
             </div>
           )}
 
