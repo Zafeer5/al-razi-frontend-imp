@@ -21,26 +21,79 @@ import {
   UserPlus,
   Users,
   CheckSquare,
-  BookOpen,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import academyLogo from "../assets/logo ac.jpg";
 
-// Pre-defined standard syllabus subjects
-const DEFAULT_ALL_SUBJECTS = [
-  "URDU",
-  "ENGLISH",
-  "MATHEMATICS",
-  "PHYSICS",
-  "CHEMISTRY",
-  "BIOLOGY",
-  "COMPUTER SCIENCE",
-  "ISLAMIYAT",
-  "TARJUMA-TUL-QURAN",
-  "PAKISTAN STUDIES",
-  "GENERAL SCIENCE",
-  "ETHICS",
-];
+// Dedicated separate base subjects for each class as per syllabus table
+const BASE_SUBJECTS_BY_CLASS = {
+  "9th": [
+    "URDU",
+    "ENGLISH",
+    "MATH",
+    "PHYSICS",
+    "CHEMISTRY",
+    "BIOLOGY",
+    "COMPUTER",
+    "ISLAMIYAT COMPULSORY",
+    "PAK STUDY",
+    "QURAN",
+    "ETHICS",
+    "GEN. SCI",
+    "EDUCATION",
+    "CIVICS",
+    "ISL. ELECTIVE",
+  ],
+  "10th": [
+    "URDU",
+    "ENGLISH",
+    "MATH",
+    "PHYSICS",
+    "CHEMISTRY",
+    "BIOLOGY",
+    "COMPUTER",
+    "ISLAMIYAT COMPULSORY",
+    "PAK STUDY",
+    "QURAN",
+    "ETHICS",
+    "GEN. SCI",
+    "EDUCATION",
+    "CIVICS",
+    "ISL. ELECTIVE",
+  ],
+  "11th": [
+    "URDU",
+    "ENGLISH",
+    "MATH",
+    "PHYSICS",
+    "CHEMISTRY",
+    "BIO",
+    "COMPUTER",
+    "ISLAMIYAT",
+    "PAK STUDY",
+    "QURAN",
+    "ETHICS",
+    "EDUCATION",
+    "CIVICS",
+    "ISL. ELECTIVE",
+  ],
+  "12th": [
+    "URDU",
+    "ENGLISH",
+    "MATH",
+    "PHYSICS",
+    "CHEMISTRY",
+    "BIO",
+    "COMPUTER",
+    "ISLAMIYAT",
+    "PAK STUDY",
+    "QURAN",
+    "ETHICS",
+    "EDUCATION",
+    "CIVICS",
+    "ISL. ELECTIVE",
+  ],
+};
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -50,7 +103,7 @@ export default function AdminPanel() {
   const [selectedRounds, setSelectedRounds] = useState(["R1", "R2", "R3"]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const [globalGrandTotal, setGlobalGrandTotal] = useState(""); // NEW STATE FOR GRAND TOTAL OVERRIDE
+  const [globalGrandTotal, setGlobalGrandTotal] = useState("");
 
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [isSingleModalOpen, setIsSingleModalOpen] = useState(false);
@@ -67,26 +120,30 @@ export default function AdminPanel() {
   // ================= SUBJECT CHECKLIST PANEL STATES (BROWSER DATABASE) =================
   const [subjectPanelClass, setSubjectPanelClass] = useState("9th");
   const [subjectSearchQuery, setSubjectSearchQuery] = useState("");
+  
+  // Independent storage per class
   const [classExtraSubjects, setClassExtraSubjects] = useState(() => {
     try {
-      const saved = localStorage.getItem("alrazi_class_subjects");
-      return saved ? JSON.parse(saved) : { "9th": [], "10th": [], "11th": [], "12th": [] };
+      const saved = localStorage.getItem("alrazi_class_subjects_v2");
+      return saved
+        ? JSON.parse(saved)
+        : { "9th": [], "10th": [], "11th": [], "12th": [] };
     } catch {
       return { "9th": [], "10th": [], "11th": [], "12th": [] };
     }
   });
 
-  // Sync Subject Panel class with Main Selected Class whenever it changes
+  // Keep Subject Panel class synced with the main class filter
   useEffect(() => {
     setSubjectPanelClass(adminSelectedClass);
   }, [adminSelectedClass]);
 
-  // Persist classExtraSubjects to browser database (localStorage)
+  // Save changes to browser localStorage without affecting official database
   useEffect(() => {
     try {
-      localStorage.setItem("alrazi_class_subjects", JSON.stringify(classExtraSubjects));
+      localStorage.setItem("alrazi_class_subjects_v2", JSON.stringify(classExtraSubjects));
     } catch (err) {
-      console.error("Failed to save subjects to localStorage", err);
+      console.error("Local storage sync error:", err);
     }
   }, [classExtraSubjects]);
 
@@ -131,15 +188,24 @@ export default function AdminPanel() {
     "R12",
   ];
 
-  // Master list of all known subjects across database + default subjects
-  const masterSubjectsList = useMemo(() => {
-    const fromMarks = globalMarks.map((m) => String(m.subject || "").trim().toUpperCase()).filter(Boolean);
-    const set = new Set([...DEFAULT_ALL_SUBJECTS, ...fromMarks]);
-    Object.values(classExtraSubjects).forEach((arr) => {
-      arr.forEach((s) => set.add(s.toUpperCase()));
-    });
-    return Array.from(set).sort();
-  }, [globalMarks, classExtraSubjects]);
+  // Isolated Master Subject list specifically tailored to the active panel class
+  const currentClassMasterSubjects = useMemo(() => {
+    const base = BASE_SUBJECTS_BY_CLASS[subjectPanelClass] || [];
+    
+    // Include marks entries that belong specifically to students of this class
+    const classStudentIds = new Set(
+      students.filter((s) => s.class === subjectPanelClass).map((s) => s.id)
+    );
+    const fromMarks = globalMarks
+      .filter((m) => classStudentIds.has(m.studentId))
+      .map((m) => String(m.subject || "").trim().toUpperCase())
+      .filter(Boolean);
+
+    const extraSaved = classExtraSubjects[subjectPanelClass] || [];
+
+    const uniqueSet = new Set([...base, ...fromMarks, ...extraSaved]);
+    return Array.from(uniqueSet);
+  }, [subjectPanelClass, students, globalMarks, classExtraSubjects]);
 
   const getActiveRollNoRange = () => {
     const activeClassStudents = students.filter(
@@ -343,7 +409,7 @@ export default function AdminPanel() {
     window.print();
   };
 
-  // Toggle subject on/off for selected class in browser database
+  // Toggle subject checklist state for a specific class independently
   const handleToggleSubjectForClass = (subjectName, targetClass) => {
     const upperSub = subjectName.toUpperCase().trim();
     setClassExtraSubjects((prev) => {
@@ -362,7 +428,7 @@ export default function AdminPanel() {
     });
   };
 
-  // Helper to calculate student report card metrics including dynamically checked subjects
+  // Compute student report metrics merging actual marks + class-level checked subjects
   const getSingleStudentMetrics = (studentObj) => {
     if (!studentObj)
       return { rows: [], grandTotalMax: 0, grandTotalObt: 0, perc: 0, status: "FAIL", originalGrandTotalMax: 0 };
@@ -371,12 +437,12 @@ export default function AdminPanel() {
       (m) => m.studentId === studentObj.id,
     );
     const dbStudentSubjects = [
-      ...new Set(studentScores.map((m) => m.subject)),
+      ...new Set(studentScores.map((m) => m.subject.toUpperCase())),
     ];
 
-    const extraSubjectsForClass = classExtraSubjects[studentObj.class] || [];
+    const extraSubjectsForThisClass = classExtraSubjects[studentObj.class] || [];
     const combinedSubjects = Array.from(
-      new Set([...dbStudentSubjects, ...extraSubjectsForClass]),
+      new Set([...dbStudentSubjects, ...extraSubjectsForThisClass]),
     );
 
     let grandTotalMax = 0;
@@ -391,7 +457,7 @@ export default function AdminPanel() {
       selectedRounds.forEach((r) => {
         const roundNum = Number(r.replace("R", ""));
         const matchEntry = studentScores.find(
-          (m) => m.subject === sub && Number(m.round) === roundNum,
+          (m) => m.subject.toUpperCase() === sub && Number(m.round) === roundNum,
         );
         if (matchEntry) {
           roundScoresMap[r] = matchEntry.obtainedMarks;
@@ -524,17 +590,17 @@ export default function AdminPanel() {
   );
   const reportCard = getSingleStudentMetrics(activeStudent);
 
-  // Determine subjects existing inherently in the active student's marks database
+  // Active student's built-in recorded subjects (Marks DB)
   const activeStudentOriginalSubjects = useMemo(() => {
     if (!activeStudent) return new Set();
     const scores = globalMarks.filter((m) => m.studentId === activeStudent.id);
     return new Set(scores.map((m) => m.subject.toUpperCase()));
   }, [activeStudent, globalMarks]);
 
-  // Filtered and Shortlisted subject list for checklist
+  // Shortlist subjects by search term and float matched to top
   const processedSubjectChecklist = useMemo(() => {
     const q = subjectSearchQuery.trim().toUpperCase();
-    let list = [...masterSubjectsList];
+    let list = [...currentClassMasterSubjects];
 
     if (q && !list.includes(q)) {
       list = [q, ...list];
@@ -547,7 +613,7 @@ export default function AdminPanel() {
       if (!aMatches && bMatches) return 1;
       return a.localeCompare(b);
     });
-  }, [masterSubjectsList, subjectSearchQuery]);
+  }, [currentClassMasterSubjects, subjectSearchQuery]);
 
   const renderMasterHeader = (reportTitleText) => (
     <div className="w-full flex flex-col mb-6">
@@ -819,10 +885,10 @@ export default function AdminPanel() {
                   </h3>
                 </div>
 
-                {/* Class Select Buttons */}
+                {/* Separate Class Select Buttons */}
                 <div className="mb-3">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-                    Target Class:
+                    Select Class:
                   </label>
                   <div className="grid grid-cols-4 gap-1">
                     {classesList.map((c) => {
@@ -835,7 +901,7 @@ export default function AdminPanel() {
                             setSubjectPanelClass(c);
                             setAdminSelectedClass(c);
                           }}
-                          className={`py-1.5 text-[11px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                          className={`py-1.5 text-[11px] font-black rounded-lg border transition-all cursor-pointer ${
                             isSelected
                               ? "bg-[#1e3a8a] text-white border-[#1e3a8a] shadow-sm"
                               : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
@@ -862,9 +928,14 @@ export default function AdminPanel() {
                   </div>
                 </div>
 
-                <p className="text-[10px] text-slate-400 font-semibold mb-2 uppercase tracking-wide">
-                  Subjects for {subjectPanelClass} Class
-                </p>
+                <div className="flex items-center justify-between mb-2 px-0.5">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    {subjectPanelClass} Subjects
+                  </span>
+                  <span className="text-[10px] font-mono text-blue-600 font-bold">
+                    {processedSubjectChecklist.length} Listed
+                  </span>
+                </div>
 
                 {/* Scrollable Checklist */}
                 <div className="space-y-1 max-h-[460px] overflow-y-auto pr-1 custom-scrollbar">
@@ -903,7 +974,7 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-                  💡 <span className="font-semibold text-slate-500">Note:</span> Original marks subjects pre-checked aur locked hain. Extra subjects har student ke result card par add rahenge jab tak uncheck na hon.
+                  🔒 Marks DB mein mojuud subjects locked hain. Naye check kiye gaye subjects <strong>{subjectPanelClass}</strong> ke har student ke result card par add rahenge.
                 </div>
               </div>
 
