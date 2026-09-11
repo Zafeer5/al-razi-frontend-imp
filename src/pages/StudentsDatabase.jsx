@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -14,6 +14,8 @@ import {
   Download,
   Trash,
   AlertTriangle,
+  RotateCcw,
+  ArrowUpDown,
 } from "lucide-react";
 
 export default function StudentsDatabase() {
@@ -21,14 +23,31 @@ export default function StudentsDatabase() {
 
   const [students, setStudents] = useState([]);
 
-  // Search and Filter States
+  // ================= GENERAL SEARCH & TOOLBAR FILTERS =================
   const [searchQuery, setSearchQuery] = useState("");
   const [classFilter, setClassFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("default");
+
+  // ================= PER-COLUMN (ROW HEADER) FILTERS =================
+  const [showColFilters, setShowColFilters] = useState(true);
+  const [colFilters, setColFilters] = useState({
+    rollNo: "",
+    fullName: "",
+    fatherName: "",
+    phone: "",
+    dob: "",
+    class: "All",
+  });
 
   // Inline Editing States
   const [editingId, setEditingId] = useState(null);
   const [editFormData, setEditFormData] = useState({
-    firstName: "", lastName: "", fatherName: "", phone: "", dob: "", class: "",
+    firstName: "",
+    lastName: "",
+    fatherName: "",
+    phone: "",
+    dob: "",
+    class: "",
   });
 
   // Custom Double-Layer Wipe Pop-up Modals States
@@ -43,11 +62,8 @@ export default function StudentsDatabase() {
       .catch((err) => console.error("Error fetching students:", err));
   }, []);
 
-  // Live count per class
-  const getClassCount = (cls) => students.filter((s) => s.class === cls).length;
-
   // =========================================================================
-  // CRASH-PROOF & ROBUST DATE PARSER
+  // CRASH-PROOF & ROBUST DATE PARSER (UNTOUCHED)
   // =========================================================================
   const formatDisplayDate = (dateInput) => {
     if (!dateInput) return "—";
@@ -90,11 +106,126 @@ export default function StudentsDatabase() {
     return String(dateInput);
   };
 
+  // Helper for column-level filter changes
+  const handleColFilterChange = (field, value) => {
+    setColFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Reset all filters to default
+  const handleResetFilters = () => {
+    setSearchQuery("");
+    setClassFilter("All");
+    setSortBy("default");
+    setColFilters({
+      rollNo: "",
+      fullName: "",
+      fatherName: "",
+      phone: "",
+      dob: "",
+      class: "All",
+    });
+  };
+
+  // ================= MULTI-TIER FILTERING & SORTING ENGINE =================
+  const filteredStudents = useMemo(() => {
+    let result = students.filter((s) => {
+      // 1. GENERAL SEARCH
+      const query = searchQuery.toLowerCase().trim();
+      const fName = (s.firstName || "").toLowerCase();
+      const lName = (s.lastName || "").toLowerCase();
+      const fullName = `${fName} ${lName}`.trim();
+      const fatherName = (s.fatherName || "").toLowerCase();
+      const phoneStr = String(s.phone || "").toLowerCase();
+      const rollStr = String(s.rollNo || "");
+
+      const matchesSearch =
+        !query ||
+        fullName.includes(query) ||
+        rollStr.includes(query) ||
+        fatherName.includes(query) ||
+        phoneStr.includes(query);
+
+      if (!matchesSearch) return false;
+
+      // 2. GENERAL TOOLBAR CLASS FILTER
+      if (classFilter !== "All" && s.class !== classFilter) return false;
+
+      // 3. COLUMN-LEVEL FILTERS
+      if (
+        colFilters.rollNo &&
+        !rollStr.toLowerCase().includes(colFilters.rollNo.toLowerCase().trim())
+      ) {
+        return false;
+      }
+      if (
+        colFilters.fullName &&
+        !fullName.includes(colFilters.fullName.toLowerCase().trim())
+      ) {
+        return false;
+      }
+      if (
+        colFilters.fatherName &&
+        !fatherName.includes(colFilters.fatherName.toLowerCase().trim())
+      ) {
+        return false;
+      }
+      if (
+        colFilters.phone &&
+        !phoneStr.includes(colFilters.phone.toLowerCase().trim())
+      ) {
+        return false;
+      }
+      if (colFilters.dob) {
+        const formatted = formatDisplayDate(s.dob).toLowerCase();
+        const rawDob = String(s.dob || "").toLowerCase();
+        const dobQ = colFilters.dob.toLowerCase().trim();
+        if (!formatted.includes(dobQ) && !rawDob.includes(dobQ)) {
+          return false;
+        }
+      }
+      if (colFilters.class !== "All" && s.class !== colFilters.class) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // 4. SORTING
+    result.sort((a, b) => {
+      const numA = Number(a.rollNo) || 0;
+      const numB = Number(b.rollNo) || 0;
+      const nameA = `${a.firstName || ""} ${a.lastName || ""}`.trim();
+      const nameB = `${b.firstName || ""} ${b.lastName || ""}`.trim();
+
+      switch (sortBy) {
+        case "roll_asc":
+          return numA - numB;
+        case "roll_desc":
+          return numB - numA;
+        case "name_asc":
+          return nameA.localeCompare(nameB);
+        case "name_desc":
+          return nameB.localeCompare(nameA);
+        case "dob_desc":
+          return new Date(b.dob || 0) - new Date(a.dob || 0);
+        case "dob_asc":
+          return new Date(a.dob || 0) - new Date(b.dob || 0);
+        default:
+          return numA - numB;
+      }
+    });
+
+    return result;
+  }, [students, searchQuery, classFilter, colFilters, sortBy]);
+
+  // Live count per class
+  const getClassCount = (cls) => students.filter((s) => s.class === cls).length;
+
   // Delete Record Handler (LIVE API)
   const handleDelete = async (id) => {
     if (
       window.confirm(
-        "Are you absolutely sure you want to delete this student permanently from the database?",
+        "Are you absolutely sure you want to delete this student permanently from the database?"
       )
     ) {
       try {
@@ -166,7 +297,7 @@ export default function StudentsDatabase() {
     link.setAttribute("href", encodedUri);
     link.setAttribute(
       "download",
-      `AlRazi_Students_Export_${classFilter}_Class.csv`,
+      `AlRazi_Students_Export_${classFilter}_Class.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -186,9 +317,7 @@ export default function StudentsDatabase() {
     });
   };
 
-  // =========================================================================
   // UPDATE / SAVE EDITS HANDLER (LIVE API CONNECTED)
-  // =========================================================================
   const handleEditSave = async (id) => {
     try {
       const response = await fetch(`https://al-razi-backend-imp.onrender.com/api/students/${id}`, {
@@ -200,7 +329,6 @@ export default function StudentsDatabase() {
       });
 
       if (response.ok) {
-        // Frontend par state update karein
         setStudents(
           students.map((s) => {
             if (s.id === id) {
@@ -209,7 +337,7 @@ export default function StudentsDatabase() {
             return s;
           })
         );
-        setEditingId(null); // Edit mode exit karein
+        setEditingId(null);
       } else {
         alert("Failed to update student in database.");
       }
@@ -218,21 +346,6 @@ export default function StudentsDatabase() {
       alert("Server connection failed during update.");
     }
   };
-
-  // Multi-Query Search Filter Logic
-  const filteredStudents = students.filter((s) => {
-    const query = searchQuery.toLowerCase().trim();
-    const fName = (s.firstName || "").toLowerCase();
-    const lName = (s.lastName || "").toLowerCase();
-    const fullName = `${fName} ${lName}`.trim();
-    const rollStr = String(s.rollNo || "");
-
-    const matchesSearch =
-      !query || fullName.includes(query) || rollStr.includes(query);
-    const matchesClass = classFilter === "All" || s.class === classFilter;
-
-    return matchesSearch && matchesClass;
-  });
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans antialiased flex flex-col h-screen overflow-hidden">
@@ -247,11 +360,10 @@ export default function StudentsDatabase() {
           </button>
           <div>
             <h2 className="text-base font-bold tracking-wide uppercase flex items-center gap-2">
-              <Database className="w-4 h-4 text-blue-300" /> Central Students
-              Repository
+              <Database className="w-4 h-4 text-blue-300" /> Central Students Repository
             </h2>
             <p className="text-[11px] text-blue-200/80 font-medium">
-              Full Administrative CRUD Control Panel
+              Full Administrative CRUD &amp; Multi-Filter Control Panel
             </p>
           </div>
         </div>
@@ -259,22 +371,22 @@ export default function StudentsDatabase() {
         <div className="bg-white/10 px-4 py-1.5 rounded-xl border border-white/10 flex items-center space-x-2">
           <Users className="w-4 h-4 text-emerald-400" />
           <span className="text-xs font-bold font-mono tracking-wider">
-            Total Strength: {students.length}
+            Filtered: {filteredStudents.length} / Total: {students.length}
           </span>
         </div>
       </header>
 
       {/* Analytics & Filters Grid */}
-      <main className="flex-1 p-6 overflow-hidden flex flex-col space-y-6">
+      <main className="flex-1 p-6 overflow-hidden flex flex-col space-y-4">
         {/* Class Metrics Counters */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 shrink-0">
           {["9th", "10th", "11th", "12th"].map((cls) => (
             <div
               key={cls}
-              onClick={() => setClassFilter(cls)}
+              onClick={() => setClassFilter(classFilter === cls ? "All" : cls)}
               className={`p-4 bg-white rounded-2xl border transition-all cursor-pointer shadow-sm relative group overflow-hidden ${
                 classFilter === cls
-                  ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/10"
+                  ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20"
                   : "border-slate-200/70 hover:border-slate-300"
               }`}
             >
@@ -294,78 +406,208 @@ export default function StudentsDatabase() {
           ))}
         </div>
 
-        {/* Controls Box */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:max-w-2xl">
-            <div className="relative w-full">
-              <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+        {/* General Controls & Filter Toolbar */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col gap-3 shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Global Search Bar */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search by student full name or automatic roll number..."
+                placeholder="Global search: name, roll number, father name, phone..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-50 text-slate-800 text-xs py-2.5 pl-10 pr-4 rounded-xl border border-slate-200/60 outline-none font-medium focus:border-slate-300 focus:bg-white transition-all"
+                className="w-full bg-slate-50 text-slate-800 text-xs py-2 pl-10 pr-4 rounded-xl border border-slate-200 outline-none font-medium focus:border-blue-400 focus:bg-white transition-all"
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            {/* Class Filter Dropdown */}
+            <div className="flex items-center space-x-2">
+              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                Class:
+              </span>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="bg-slate-50 text-slate-700 font-bold text-xs py-2 px-3 border border-slate-200 rounded-xl focus:outline-none cursor-pointer"
+              >
+                <option value="All">All Classes</option>
+                <option value="9th">9th Standard</option>
+                <option value="10th">10th Standard</option>
+                <option value="11th">11th Standard</option>
+                <option value="12th">12th Standard</option>
+              </select>
+            </div>
+
+            {/* Sorting Engine */}
+            <div className="flex items-center space-x-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
+              >
+                <option value="default">Sort: Roll No (Asc)</option>
+                <option value="roll_desc">Roll No (High → Low)</option>
+                <option value="name_asc">Name (A → Z)</option>
+                <option value="name_desc">Name (Z → A)</option>
+                <option value="dob_desc">DOB (Newest First)</option>
+                <option value="dob_asc">DOB (Oldest First)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Sub-toolbar utilities */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowColFilters(!showColFilters)}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                  showColFilters
+                    ? "bg-blue-100 text-[#1e3a8a]"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>{showColFilters ? "Hide Column Filters" : "Show Column Filters"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-bold transition-all"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset All</span>
+              </button>
+
+              <span className="text-[11px] text-slate-400 font-medium ml-2">
+                Showing <strong>{filteredStudents.length}</strong> of {students.length} students
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
               <button
                 type="button"
                 onClick={handleDownloadCSV}
-                className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide transition-all shadow-sm active:scale-95"
+                className="flex items-center justify-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wide transition-all shadow-sm active:scale-95"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Download CSV</span>
+                <span>Export CSV</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  if (students.length === 0)
-                    alert("Database is already empty.");
+                  if (students.length === 0) alert("Database is already empty.");
                   else setShowWipeModal1(true);
                 }}
-                className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wide transition-all active:scale-95"
+                className="flex items-center justify-center space-x-1.5 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 px-3.5 py-1.5 rounded-lg font-bold text-xs uppercase tracking-wide transition-all active:scale-95"
               >
                 <Trash className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Wipe Repository</span>
+                <span>Wipe Repository</span>
               </button>
             </div>
           </div>
-
-          <div className="flex items-center space-x-3 w-full md:w-auto justify-end">
-            <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">
-              Filter:
-            </span>
-            <select
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
-              className="bg-slate-50 text-slate-700 font-bold text-xs py-2 px-3 border border-slate-200 rounded-xl focus:outline-none cursor-pointer"
-            >
-              <option value="All">All Registered Classes</option>
-              <option value="9th">9th Standard</option>
-              <option value="10th">10th Standard</option>
-              <option value="11th">11th Standard</option>
-              <option value="12th">12th Standard</option>
-            </select>
-          </div>
         </div>
 
-        {/* MAIN DATA SHEET WORKSPACE */}
+        {/* MAIN DATA SHEET WORKSPACE WITH COLUMN-LEVEL FILTERS */}
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm flex-1 overflow-hidden flex flex-col">
           <div className="overflow-x-auto flex-1 custom-scrollbar">
-            <table className="w-full text-left border-collapse text-xs min-w-[800px]">
+            <table className="w-full text-left border-collapse text-xs min-w-[850px]">
               <thead className="sticky top-0 bg-slate-50 shadow-sm z-10 border-b border-slate-200">
+                {/* 1. Header Labels */}
                 <tr className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="p-3 pl-5">Roll No</th>
+                  <th className="p-3 pl-5 w-28">Roll No</th>
                   <th className="p-3">Full Name</th>
                   <th className="p-3">Father's Name</th>
-                  <th className="p-3">Father Phone</th>
-                  <th className="p-3">Date of Birth</th>
-                  <th className="p-3">Class</th>
-                  <th className="p-3 text-center pr-5">Actions</th>
+                  <th className="p-3 w-36">Father Phone</th>
+                  <th className="p-3 w-32">Date of Birth</th>
+                  <th className="p-3 w-28">Class</th>
+                  <th className="p-3 text-center pr-5 w-24">Actions</th>
                 </tr>
+
+                {/* 2. Column-Specific Filter Inputs */}
+                {showColFilters && (
+                  <tr className="bg-slate-100/70 border-b-2 border-slate-200 text-[11px]">
+                    {/* Roll Filter */}
+                    <td className="p-2 pl-5">
+                      <input
+                        type="text"
+                        placeholder="Roll..."
+                        value={colFilters.rollNo}
+                        onChange={(e) => handleColFilterChange("rollNo", e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-md px-2 py-1 text-xs outline-none focus:border-blue-500 font-mono"
+                      />
+                    </td>
+
+                    {/* Name Filter */}
+                    <td className="p-2">
+                      <input
+                        type="text"
+                        placeholder="Filter name..."
+                        value={colFilters.fullName}
+                        onChange={(e) => handleColFilterChange("fullName", e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-md px-2 py-1 text-xs outline-none focus:border-blue-500"
+                      />
+                    </td>
+
+                    {/* Father Name Filter */}
+                    <td className="p-2">
+                      <input
+                        type="text"
+                        placeholder="Filter father..."
+                        value={colFilters.fatherName}
+                        onChange={(e) => handleColFilterChange("fatherName", e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-md px-2 py-1 text-xs outline-none focus:border-blue-500"
+                      />
+                    </td>
+
+                    {/* Phone Filter */}
+                    <td className="p-2">
+                      <input
+                        type="text"
+                        placeholder="Filter phone..."
+                        value={colFilters.phone}
+                        onChange={(e) => handleColFilterChange("phone", e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-md px-2 py-1 text-xs outline-none focus:border-blue-500 font-mono"
+                      />
+                    </td>
+
+                    {/* DOB Filter */}
+                    <td className="p-2">
+                      <input
+                        type="text"
+                        placeholder="Year/Date..."
+                        value={colFilters.dob}
+                        onChange={(e) => handleColFilterChange("dob", e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-md px-2 py-1 text-xs outline-none focus:border-blue-500 font-mono"
+                      />
+                    </td>
+
+                    {/* Class Dropdown Filter */}
+                    <td className="p-2">
+                      <select
+                        value={colFilters.class}
+                        onChange={(e) => handleColFilterChange("class", e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-md px-1.5 py-1 text-xs outline-none focus:border-blue-500 font-bold"
+                      >
+                        <option value="All">All</option>
+                        <option value="9th">9th</option>
+                        <option value="10th">10th</option>
+                        <option value="11th">11th</option>
+                        <option value="12th">12th</option>
+                      </select>
+                    </td>
+
+                    <td className="p-2 text-center text-[10px] text-slate-400 font-bold pr-5">
+                      Filters
+                    </td>
+                  </tr>
+                )}
               </thead>
+
               <tbody className="divide-y divide-slate-100 bg-white text-slate-600 font-medium">
                 {filteredStudents.length === 0 ? (
                   <tr>
@@ -373,8 +615,7 @@ export default function StudentsDatabase() {
                       colSpan="7"
                       className="text-center p-12 text-slate-400 italic"
                     >
-                      No student records found matching the active filters or
-                      search parameters.
+                      No student records found matching the active filters.
                     </td>
                   </tr>
                 ) : (
@@ -544,9 +785,7 @@ export default function StudentsDatabase() {
         </div>
       </main>
 
-      {/* ==========================================
-         POP-UP MODAL LAYER 1: FIRST WARNING
-         ========================================== */}
+      {/* POP-UP MODAL LAYER 1: FIRST WARNING */}
       {showWipeModal1 && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 p-6 relative animate-scale-up">
@@ -564,13 +803,11 @@ export default function StudentsDatabase() {
                 Wipe Students Repository?
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                Kya aap Al Razi Academy ka poora central students database khali
-                karna chahte hain?
+                Kya aap Al Razi Academy ka poora central students database khali karna chahte hain?
               </p>
             </div>
             <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3.5 text-xs text-amber-800 font-medium leading-relaxed mb-6">
-              Is operation se system mein moujood tamam classes (9th, 10th,
-              11th, 12th) ke students ka record saaf ho jayega.
+              Is operation se system mein moujood tamam classes (9th, 10th, 11th, 12th) ke students ka record saaf ho jayega.
             </div>
             <div className="flex gap-3">
               <button
@@ -593,9 +830,7 @@ export default function StudentsDatabase() {
         </div>
       )}
 
-      {/* ==========================================
-         POP-UP MODAL LAYER 2: CRITICAL MAXIMUM WARNING
-         ========================================== */}
+      {/* POP-UP MODAL LAYER 2: CRITICAL MAXIMUM WARNING */}
       {showWipeModal2 && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 p-6 relative animate-scale-up">
@@ -617,9 +852,7 @@ export default function StudentsDatabase() {
               </p>
             </div>
             <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 text-xs font-bold leading-relaxed mb-6">
-              🛑 CRITICAL ALERT: Agar aapne abhi 'Wipe Everything' par click
-              kiya, toh backup ke bina saara data hamesha ke liye ud jayega.
-              Roll numbers aur personal details mukammal urr jayengi.
+              🛑 CRITICAL ALERT: Agar aapne abhi 'Wipe Everything' par click kiya, toh backup ke bina saara data hamesha ke liye ud jayega. Roll numbers aur personal details mukammal urr jayengi.
             </div>
             <div className="flex gap-3">
               <button
