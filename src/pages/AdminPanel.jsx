@@ -136,13 +136,19 @@ export default function AdminPanel() {
 
   const handleSingleSubmit = async (e) => {
     e.preventDefault();
+
+    // Default fallback values if empty
+    const finalFatherName = formData.fatherName.trim() || "NA";
+    const finalPhone = formData.phone.trim() || "NA";
+    const finalDob = formData.dob.trim() || "2000-01-01";
+
     const newStudent = {
       id: "STUD-" + Date.now(),
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      fatherName: formData.fatherName,
-      phone: formData.phone,
-      dob: formData.dob,
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      fatherName: finalFatherName,
+      phone: finalPhone,
+      dob: finalDob,
       class: formData.class,
       rollNo: calculatedRollNo,
     };
@@ -219,13 +225,17 @@ export default function AdminPanel() {
         nextRollNo = Math.max(...classStudents.map((s) => s.rollNo)) + 1;
       }
 
+      const rawFather = row.FatherName || row.fatherName || "";
+      const rawPhone = row.FatherPhone || row.fatherPhone || "";
+      const rawDob = row.DOB || row.dob || "";
+
       const newStud = {
         id: `BULK-${Date.now()}-${index}`,
-        firstName: row.FirstName || row.firstName || "Unknown",
-        lastName: row.LastName || row.lastName || "",
-        fatherName: row.FatherName || row.fatherName || "",
-        phone: row.FatherPhone || row.fatherPhone || "",
-        dob: row.DOB || row.dob || "",
+        firstName: String(row.FirstName || row.firstName || "Unknown").trim(),
+        lastName: String(row.LastName || row.lastName || "").trim(),
+        fatherName: String(rawFather).trim() || "NA",
+        phone: String(rawPhone).trim() || "NA",
+        dob: String(rawDob).trim() || "2000-01-01",
         class: targetClass,
         rollNo: nextRollNo,
       };
@@ -333,7 +343,6 @@ export default function AdminPanel() {
       };
     });
 
-    // Override logic
     const appliedGrandTotalMax = globalGrandTotal.toString().trim() !== "" && !isNaN(Number(globalGrandTotal))
       ? Number(globalGrandTotal)
       : grandTotalMax;
@@ -343,7 +352,6 @@ export default function AdminPanel() {
         ? ((grandTotalObt / appliedGrandTotalMax) * 100).toFixed(1)
         : 0;
 
-    // Fail only if failed in half or more of the subjects, or if overall percentage is below 40%
     const totalSubjectsCount = rows.length;
     const isFailedInMajority = totalSubjectsCount > 0 && failedSubjectsCount >= totalSubjectsCount / 2;
 
@@ -474,7 +482,7 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans antialiased flex h-screen overflow-hidden">
-      {/* ===================== PRINT CSS — FIXED ===================== */}
+      {/* ===================== PRINT CSS ===================== */}
       <style>{`
         @page {
           size: A4;
@@ -694,7 +702,6 @@ export default function AdminPanel() {
               className="bg-slate-50 border border-slate-300 px-4 py-2 rounded-lg text-slate-900 font-black font-mono outline-none focus:border-blue-500 w-44 text-center shadow-inner"
             />
           </div>
-          {/* ----------------------------------------- */}
 
           {/* 1. SINGLE TRANSCRIPT MODE */}
           {activeReportMode === "single" && activeStudent && (
@@ -1408,7 +1415,7 @@ export default function AdminPanel() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <User className="w-3 h-3 inline mr-1" /> First Name
+                    <User className="w-3 h-3 inline mr-1" /> First Name *
                   </label>
                   <input
                     type="text"
@@ -1422,7 +1429,7 @@ export default function AdminPanel() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Last Name
+                    Last Name *
                   </label>
                   <input
                     type="text"
@@ -1430,49 +1437,47 @@ export default function AdminPanel() {
                     value={formData.lastName}
                     onChange={handleInputChange}
                     placeholder="e.g. Batool"
+                    required
                     className="w-full bg-slate-100 text-slate-700 text-sm py-2 px-3.5 rounded-xl border border-transparent focus:border-slate-300 focus:bg-white outline-none"
                   />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Father's Name
+                  Father's Name (Optional)
                 </label>
                 <input
                   type="text"
                   name="fatherName"
                   value={formData.fatherName}
                   onChange={handleInputChange}
-                  placeholder="Enter father's full name"
-                  required
+                  placeholder="Enter father's full name (Default: NA)"
                   className="w-full bg-slate-100 text-slate-700 text-sm py-2 px-3.5 rounded-xl border border-transparent focus:border-slate-300 focus:bg-white outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <Phone className="w-3 h-3 inline mr-1" /> Father Phone No.
+                    <Phone className="w-3 h-3 inline mr-1" /> Father Phone No. (Optional)
                   </label>
                   <input
                     type="tel"
                     name="phone"
                     value={formData.phone}
                     onChange={handleInputChange}
-                    placeholder="e.g. 03001234567"
-                    required
+                    placeholder="e.g. 03001234567 (Default: NA)"
                     className="w-full bg-slate-100 text-slate-700 text-sm py-2 px-3.5 rounded-xl border border-transparent focus:border-slate-300 focus:bg-white outline-none"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <Calendar className="w-3 h-3 inline mr-1" /> Date of Birth
+                    <Calendar className="w-3 h-3 inline mr-1" /> Date of Birth (Optional)
                   </label>
                   <input
                     type="date"
                     name="dob"
                     value={formData.dob}
                     onChange={handleInputChange}
-                    required
                     className="w-full bg-slate-100 text-slate-700 text-sm py-2 px-3.5 rounded-xl border border-transparent focus:border-slate-300 focus:bg-white outline-none"
                   />
                 </div>
@@ -1480,7 +1485,7 @@ export default function AdminPanel() {
               <div className="grid grid-cols-2 gap-4 pt-2">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Select Class
+                    Select Class *
                   </label>
                   <select
                     name="class"
