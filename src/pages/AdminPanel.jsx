@@ -25,73 +25,131 @@ import {
 import * as XLSX from "xlsx";
 import academyLogo from "../assets/logo ac.jpg";
 
-// Dedicated separate base subjects for each class as per syllabus table
-const BASE_SUBJECTS_BY_CLASS = {
+// Exact standard spellings as provided
+const OFFICIAL_SUBJECT_NAMES = [
+  "Accounting",
+  "Agriculture",
+  "Arabic",
+  "Banking",
+  "Biology",
+  "Business Math",
+  "Business Statistics",
+  "Chemistry",
+  "Civics",
+  "Clothing & Textile",
+  "Commercial Geography",
+  "Computer",
+  "Computer-Tech",
+  "Economics",
+  "Education",
+  "English",
+  "Ethics",
+  "Food & Nutrition",
+  "General Math",
+  "General Science",
+  "Geography",
+  "Health & Physical Education",
+  "History",
+  "Home Economics",
+  "ICT-Tech",
+  "Islamiyat (Compulsory)",
+  "Islamiyat (Elective)",
+  "Library Science",
+  "Math",
+  "Pakistan Studies",
+  "Persian",
+  "Physics",
+  "Principles of Commerce",
+  "Psychology",
+  "Punjabi",
+  "Statistics",
+  "Tarjuma-tul-Quran",
+  "Urdu",
+];
+
+// Helper to normalize any incoming database/file spellings to the official spellings
+const normalizeSubjectName = (name) => {
+  if (!name) return "";
+  const cleaned = name.trim().toLowerCase();
+
+  if (cleaned === "math" || cleaned === "mathematics") return "Math";
+  if (cleaned === "bio" || cleaned === "biology") return "Biology";
+  if (cleaned === "computer" || cleaned === "computer science" || cleaned === "comp") return "Computer";
+  if (cleaned === "urdu") return "Urdu";
+  if (cleaned === "english" || cleaned === "eng") return "English";
+  if (cleaned === "physics" || cleaned === "phy") return "Physics";
+  if (cleaned === "chemistry" || cleaned === "chem") return "Chemistry";
+  if (cleaned === "civics") return "Civics";
+  if (cleaned === "education" || cleaned === "edu") return "Education";
+  if (cleaned === "ethics") return "Ethics";
+  if (cleaned === "gen. sci" || cleaned === "gen sci" || cleaned === "general science") return "General Science";
+  if (cleaned === "pak study" || cleaned === "pak studies" || cleaned === "pakistan studies") return "Pakistan Studies";
+  if (
+    cleaned === "quran" ||
+    cleaned === "tarjuma-tul-quran" ||
+    cleaned === "tarjumatul quran" ||
+    cleaned === "tarjuma tul quran"
+  )
+    return "Tarjuma-tul-Quran";
+  if (
+    cleaned === "isl. elective" ||
+    cleaned === "islamiyat elective" ||
+    cleaned === "islamiyat (elective)"
+  )
+    return "Islamiyat (Elective)";
+  if (
+    cleaned === "islamiyat" ||
+    cleaned === "islamiyat compulsory" ||
+    cleaned === "islamiyat (compulsory)" ||
+    cleaned === "islamiat"
+  )
+    return "Islamiyat (Compulsory)";
+
+  const matched = OFFICIAL_SUBJECT_NAMES.find(
+    (item) => item.toLowerCase() === cleaned
+  );
+  return matched || name.trim();
+};
+
+// Official syllabus grouping schema as provided in image
+const CLASS_SUBJECT_GROUPS = {
   "9th": [
-    "URDU",
-    "ENGLISH",
-    "MATH",
-    "PHYSICS",
-    "CHEMISTRY",
-    "BIOLOGY",
-    "COMPUTER",
-    "ISLAMIYAT COMPULSORY",
-    "PAK STUDY",
-    "QURAN",
-    "ETHICS",
-    "GEN. SCI",
-    "EDUCATION",
-    "CIVICS",
-    "ISL. ELECTIVE",
+    ["Urdu"],
+    ["Chemistry", "Education"],
+    ["Computer", "Biology", "Civics", "Islamiyat (Elective)"],
+    ["Physics", "General Science"],
+    ["English"],
+    ["Islamiyat (Compulsory)", "Pakistan Studies"],
+    ["Tarjuma-tul-Quran", "Ethics"],
+    ["Math"],
   ],
   "10th": [
-    "URDU",
-    "ENGLISH",
-    "MATH",
-    "PHYSICS",
-    "CHEMISTRY",
-    "BIOLOGY",
-    "COMPUTER",
-    "ISLAMIYAT COMPULSORY",
-    "PAK STUDY",
-    "QURAN",
-    "ETHICS",
-    "GEN. SCI",
-    "EDUCATION",
-    "CIVICS",
-    "ISL. ELECTIVE",
+    ["Urdu"],
+    ["Chemistry", "Education"],
+    ["Computer", "Biology", "Civics", "Islamiyat (Elective)"],
+    ["Physics", "General Science"],
+    ["English"],
+    ["Islamiyat (Compulsory)", "Pakistan Studies"],
+    ["Tarjuma-tul-Quran", "Ethics"],
+    ["Math"],
   ],
   "11th": [
-    "URDU",
-    "ENGLISH",
-    "MATH",
-    "PHYSICS",
-    "CHEMISTRY",
-    "BIO",
-    "COMPUTER",
-    "ISLAMIYAT",
-    "PAK STUDY",
-    "QURAN",
-    "ETHICS",
-    "EDUCATION",
-    "CIVICS",
-    "ISL. ELECTIVE",
+    ["Computer", "Chemistry", "Islamiyat (Elective)"],
+    ["Islamiyat (Compulsory)", "Pakistan Studies"],
+    ["Urdu"],
+    ["Math", "Biology", "Education"],
+    ["English"],
+    ["Physics", "Civics"],
+    ["Tarjuma-tul-Quran", "Ethics"],
   ],
   "12th": [
-    "URDU",
-    "ENGLISH",
-    "MATH",
-    "PHYSICS",
-    "CHEMISTRY",
-    "BIO",
-    "COMPUTER",
-    "ISLAMIYAT",
-    "PAK STUDY",
-    "QURAN",
-    "ETHICS",
-    "EDUCATION",
-    "CIVICS",
-    "ISL. ELECTIVE",
+    ["Computer", "Chemistry", "Islamiyat (Elective)"],
+    ["Islamiyat (Compulsory)", "Pakistan Studies"],
+    ["Urdu"],
+    ["Math", "Biology", "Education"],
+    ["English"],
+    ["Physics", "Civics"],
+    ["Tarjuma-tul-Quran", "Ethics"],
   ],
 };
 
@@ -120,11 +178,11 @@ export default function AdminPanel() {
   // ================= SUBJECT CHECKLIST PANEL STATES (BROWSER DATABASE) =================
   const [subjectPanelClass, setSubjectPanelClass] = useState("9th");
   const [subjectSearchQuery, setSubjectSearchQuery] = useState("");
-  
-  // Independent storage per class
+
+  // Persistent class-wise extra checked subjects in localStorage
   const [classExtraSubjects, setClassExtraSubjects] = useState(() => {
     try {
-      const saved = localStorage.getItem("alrazi_class_subjects_v2");
+      const saved = localStorage.getItem("alrazi_class_subjects_v3");
       return saved
         ? JSON.parse(saved)
         : { "9th": [], "10th": [], "11th": [], "12th": [] };
@@ -133,15 +191,13 @@ export default function AdminPanel() {
     }
   });
 
-  // Keep Subject Panel class synced with the main class filter
   useEffect(() => {
     setSubjectPanelClass(adminSelectedClass);
   }, [adminSelectedClass]);
 
-  // Save changes to browser localStorage without affecting official database
   useEffect(() => {
     try {
-      localStorage.setItem("alrazi_class_subjects_v2", JSON.stringify(classExtraSubjects));
+      localStorage.setItem("alrazi_class_subjects_v3", JSON.stringify(classExtraSubjects));
     } catch (err) {
       console.error("Local storage sync error:", err);
     }
@@ -188,23 +244,23 @@ export default function AdminPanel() {
     "R12",
   ];
 
-  // Isolated Master Subject list specifically tailored to the active panel class
-  const currentClassMasterSubjects = useMemo(() => {
-    const base = BASE_SUBJECTS_BY_CLASS[subjectPanelClass] || [];
-    
-    // Include marks entries that belong specifically to students of this class
+  // All eligible subjects for the currently selected class checklist
+  const currentClassChecklistSubjects = useMemo(() => {
+    const classGroups = CLASS_SUBJECT_GROUPS[subjectPanelClass] || [];
+    const baseSubjects = classGroups.flat();
+
     const classStudentIds = new Set(
       students.filter((s) => s.class === subjectPanelClass).map((s) => s.id)
     );
     const fromMarks = globalMarks
       .filter((m) => classStudentIds.has(m.studentId))
-      .map((m) => String(m.subject || "").trim().toUpperCase())
+      .map((m) => normalizeSubjectName(m.subject))
       .filter(Boolean);
 
     const extraSaved = classExtraSubjects[subjectPanelClass] || [];
 
-    const uniqueSet = new Set([...base, ...fromMarks, ...extraSaved]);
-    return Array.from(uniqueSet);
+    const set = new Set([...baseSubjects, ...fromMarks, ...extraSaved]);
+    return Array.from(set);
   }, [subjectPanelClass, students, globalMarks, classExtraSubjects]);
 
   const getActiveRollNoRange = () => {
@@ -303,7 +359,7 @@ export default function AdminPanel() {
     } catch (error) {
       console.error("API Error:", error);
       alert(
-        "❌ Server connection failed! Kya aapka backend (node server.js) chal raha hai?",
+        "❌ Server connection failed! Kya aapka backend chal raha hai?",
       );
     }
   };
@@ -409,26 +465,26 @@ export default function AdminPanel() {
     window.print();
   };
 
-  // Toggle subject checklist state for a specific class independently
+  // Toggle subject checklist state for target class in localStorage
   const handleToggleSubjectForClass = (subjectName, targetClass) => {
-    const upperSub = subjectName.toUpperCase().trim();
+    const standardName = normalizeSubjectName(subjectName);
     setClassExtraSubjects((prev) => {
       const currentList = prev[targetClass] || [];
-      if (currentList.includes(upperSub)) {
+      if (currentList.includes(standardName)) {
         return {
           ...prev,
-          [targetClass]: currentList.filter((s) => s !== upperSub),
+          [targetClass]: currentList.filter((s) => s !== standardName),
         };
       } else {
         return {
           ...prev,
-          [targetClass]: [...currentList, upperSub],
+          [targetClass]: [...currentList, standardName],
         };
       }
     });
   };
 
-  // Compute student report metrics merging actual marks + class-level checked subjects
+  // Compute student report metrics with unified group slots (e.g. Math / Biology)
   const getSingleStudentMetrics = (studentObj) => {
     if (!studentObj)
       return { rows: [], grandTotalMax: 0, grandTotalObt: 0, perc: 0, status: "FAIL", originalGrandTotalMax: 0 };
@@ -436,33 +492,69 @@ export default function AdminPanel() {
     const studentScores = globalMarks.filter(
       (m) => m.studentId === studentObj.id,
     );
-    const dbStudentSubjects = [
-      ...new Set(studentScores.map((m) => m.subject.toUpperCase())),
-    ];
 
-    const extraSubjectsForThisClass = classExtraSubjects[studentObj.class] || [];
-    const combinedSubjects = Array.from(
-      new Set([...dbStudentSubjects, ...extraSubjectsForThisClass]),
-    );
+    const studentDbSubjects = studentScores.map((m) => normalizeSubjectName(m.subject));
+    const extraForClass = classExtraSubjects[studentObj.class] || [];
+
+    // All active subjects considered for this class
+    const activeClassSubjects = new Set([...studentDbSubjects, ...extraForClass]);
+
+    const predefinedGroups = CLASS_SUBJECT_GROUPS[studentObj.class] || [];
+    const groupedRowsConfig = [];
+    const handledSubjects = new Set();
+
+    // 1. Process predefined syllabus elective groups
+    predefinedGroups.forEach((group) => {
+      const activeInGroup = group.filter((sub) => activeClassSubjects.has(sub));
+      if (activeInGroup.length > 0) {
+        groupedRowsConfig.push({
+          displayName: activeInGroup.join(" / "),
+          subjectsInGroup: activeInGroup,
+        });
+        activeInGroup.forEach((sub) => handledSubjects.add(sub));
+      }
+    });
+
+    // 2. Add any standalone subjects not covered in standard groups
+    activeClassSubjects.forEach((sub) => {
+      if (!handledSubjects.has(sub)) {
+        groupedRowsConfig.push({
+          displayName: sub,
+          subjectsInGroup: [sub],
+        });
+      }
+    });
 
     let grandTotalMax = 0;
     let grandTotalObt = 0;
     let failedSubjectsCount = 0;
 
-    const rows = combinedSubjects.map((sub) => {
+    const rows = groupedRowsConfig.map(({ displayName, subjectsInGroup }) => {
       const roundScoresMap = {};
       let totalMaxSubject = 0;
       let totalObtSubject = 0;
+      let foundAnyScoreInGroup = false;
 
       selectedRounds.forEach((r) => {
         const roundNum = Number(r.replace("R", ""));
-        const matchEntry = studentScores.find(
-          (m) => m.subject.toUpperCase() === sub && Number(m.round) === roundNum,
-        );
-        if (matchEntry) {
-          roundScoresMap[r] = matchEntry.obtainedMarks;
-          totalMaxSubject += matchEntry.totalMarks;
-          totalObtSubject += matchEntry.obtainedMarks;
+        let matchedScore = null;
+
+        // Find match among the subjects in this elective slot
+        for (const sub of subjectsInGroup) {
+          const entry = studentScores.find(
+            (m) => normalizeSubjectName(m.subject) === sub && Number(m.round) === roundNum,
+          );
+          if (entry) {
+            matchedScore = entry;
+            break;
+          }
+        }
+
+        if (matchedScore) {
+          foundAnyScoreInGroup = true;
+          roundScoresMap[r] = matchedScore.obtainedMarks;
+          totalMaxSubject += matchedScore.totalMarks;
+          totalObtSubject += matchedScore.obtainedMarks;
         } else {
           roundScoresMap[r] = "—";
         }
@@ -473,44 +565,49 @@ export default function AdminPanel() {
 
       const subPercentage =
         totalMaxSubject > 0 ? (totalObtSubject / totalMaxSubject) * 100 : 0;
-      const subjectStatus = subPercentage >= 40 ? "PASS" : "FAIL";
+      const subjectStatus = totalMaxSubject === 0 ? "—" : subPercentage >= 40 ? "PASS" : "FAIL";
+
       if (subjectStatus === "FAIL") {
         failedSubjectsCount += 1;
       }
 
       return {
-        subjectName: sub,
+        subjectName: displayName,
         rounds: roundScoresMap,
         totalMax: totalMaxSubject,
         totalObt: totalObtSubject,
         status: subjectStatus,
+        hasRecord: foundAnyScoreInGroup,
       };
     });
 
-    const appliedGrandTotalMax = globalGrandTotal.toString().trim() !== "" && !isNaN(Number(globalGrandTotal))
-      ? Number(globalGrandTotal)
-      : grandTotalMax;
+    const appliedGrandTotalMax =
+      globalGrandTotal.toString().trim() !== "" && !isNaN(Number(globalGrandTotal))
+        ? Number(globalGrandTotal)
+        : grandTotalMax;
 
     const perc =
       appliedGrandTotalMax > 0
         ? ((grandTotalObt / appliedGrandTotalMax) * 100).toFixed(1)
         : 0;
 
-    const totalSubjectsCount = rows.length;
-    const isFailedInMajority = totalSubjectsCount > 0 && failedSubjectsCount >= totalSubjectsCount / 2;
+    const evaluatedSubjects = rows.filter((r) => r.hasRecord || r.totalMax > 0);
+    const totalSubjectsCount = evaluatedSubjects.length;
+    const isFailedInMajority =
+      totalSubjectsCount > 0 && failedSubjectsCount >= totalSubjectsCount / 2;
 
     const status =
       Number(perc) >= 40 && !isFailedInMajority && appliedGrandTotalMax > 0
         ? "PASS"
         : "FAIL";
 
-    return { 
-      rows, 
-      grandTotalMax: appliedGrandTotalMax, 
-      grandTotalObt, 
-      perc, 
-      status, 
-      originalGrandTotalMax: grandTotalMax
+    return {
+      rows,
+      grandTotalMax: appliedGrandTotalMax,
+      grandTotalObt,
+      perc,
+      status,
+      originalGrandTotalMax: grandTotalMax,
     };
   };
 
@@ -590,30 +687,33 @@ export default function AdminPanel() {
   );
   const reportCard = getSingleStudentMetrics(activeStudent);
 
-  // Active student's built-in recorded subjects (Marks DB)
+  // Active student's marks database recorded subjects
   const activeStudentOriginalSubjects = useMemo(() => {
     if (!activeStudent) return new Set();
     const scores = globalMarks.filter((m) => m.studentId === activeStudent.id);
-    return new Set(scores.map((m) => m.subject.toUpperCase()));
+    return new Set(scores.map((m) => normalizeSubjectName(m.subject)));
   }, [activeStudent, globalMarks]);
 
-  // Shortlist subjects by search term and float matched to top
+  // Shortlisted and filtered checklist subjects
   const processedSubjectChecklist = useMemo(() => {
-    const q = subjectSearchQuery.trim().toUpperCase();
-    let list = [...currentClassMasterSubjects];
+    const q = subjectSearchQuery.trim().toLowerCase();
+    let list = [...currentClassChecklistSubjects];
 
-    if (q && !list.includes(q)) {
-      list = [q, ...list];
+    if (q) {
+      const normalizedQuery = normalizeSubjectName(subjectSearchQuery);
+      if (!list.includes(normalizedQuery)) {
+        list = [normalizedQuery, ...list];
+      }
     }
 
     return list.sort((a, b) => {
-      const aMatches = q ? a.includes(q) : false;
-      const bMatches = q ? b.includes(q) : false;
+      const aMatches = q ? a.toLowerCase().includes(q) : false;
+      const bMatches = q ? b.toLowerCase().includes(q) : false;
       if (aMatches && !bMatches) return -1;
       if (!aMatches && bMatches) return 1;
       return a.localeCompare(b);
     });
-  }, [currentClassMasterSubjects, subjectSearchQuery]);
+  }, [currentClassChecklistSubjects, subjectSearchQuery]);
 
   const renderMasterHeader = (reportTitleText) => (
     <div className="w-full flex flex-col mb-6">
@@ -651,7 +751,7 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans antialiased flex h-screen overflow-hidden">
-      {/* ===================== PRINT CSS ===================== */}
+      {/* PRINT STYLES */}
       <style>{`
         @page {
           size: A4;
@@ -713,7 +813,7 @@ export default function AdminPanel() {
         }
       `}</style>
 
-      {/* LEFT SIDEBAR */}
+      {/* LEFT SIDEBAR: STUDENT LIST */}
       {showLeftSidebar && (
         <aside className="w-64 bg-[#1e3a8a] text-white flex flex-col justify-between shrink-0 h-full shadow-xl no-print">
           <div>
@@ -790,13 +890,21 @@ export default function AdminPanel() {
                         setActiveStudent(student);
                         setActiveReportMode("single");
                       }}
-                      className={`flex items-center justify-between py-2.5 px-3 rounded-xl cursor-pointer transition-all border ${isCurrentActive ? "bg-white text-slate-900 border-white shadow-md font-bold scale-[1.01]" : "bg-white/5 text-slate-200 border-transparent hover:bg-white/10"}`}
+                      className={`flex items-center justify-between py-2.5 px-3 rounded-xl cursor-pointer transition-all border ${
+                        isCurrentActive
+                          ? "bg-white text-slate-900 border-white shadow-md font-bold scale-[1.01]"
+                          : "bg-white/5 text-slate-200 border-transparent hover:bg-white/10"
+                      }`}
                     >
                       <span className="text-xs tracking-wide truncate">
                         {student.firstName} {student.lastName}
                       </span>
                       <span
-                        className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ml-2 ${isCurrentActive ? "bg-[#1e3a8a] text-white" : "bg-white/10 text-slate-300"}`}
+                        className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ml-2 ${
+                          isCurrentActive
+                            ? "bg-[#1e3a8a] text-white"
+                            : "bg-white/10 text-slate-300"
+                        }`}
                       >
                         {student.rollNo}
                       </span>
@@ -852,8 +960,7 @@ export default function AdminPanel() {
         </header>
 
         <main className="flex-1 bg-slate-50 flex flex-col items-center justify-start p-8 overflow-y-auto custom-scrollbar">
-          
-          {/* --- GLOBAL GRAND TOTAL BOX (NO PRINT) --- */}
+          {/* GLOBAL GRAND TOTAL BOX */}
           <div className="bg-white p-4 mb-6 rounded-xl shadow-sm border border-slate-200 w-[210mm] shrink-0 no-print flex items-center justify-between">
             <div>
               <h3 className="font-bold text-slate-800 uppercase tracking-wide text-sm">
@@ -872,11 +979,10 @@ export default function AdminPanel() {
             />
           </div>
 
-          {/* 1. SINGLE TRANSCRIPT MODE (WITH LEFT SUBJECT CHECKLIST PANEL) */}
+          {/* 1. SINGLE TRANSCRIPT MODE */}
           {activeReportMode === "single" && activeStudent && (
             <div className="flex items-start justify-center gap-6 w-full max-w-[290mm]">
-              
-              {/* ================= LEFT SUBJECTS CHECKLIST PANEL (NO-PRINT) ================= */}
+              {/* LEFT SUBJECT CHECKLIST PANEL (NO-PRINT) */}
               <div className="w-64 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 shrink-0 no-print flex flex-col">
                 <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 mb-3">
                   <CheckSquare className="w-4 h-4 text-blue-700" />
@@ -885,7 +991,7 @@ export default function AdminPanel() {
                   </h3>
                 </div>
 
-                {/* Separate Class Select Buttons */}
+                {/* Class Select Buttons */}
                 <div className="mb-3">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
                     Select Class:
@@ -914,13 +1020,13 @@ export default function AdminPanel() {
                   </div>
                 </div>
 
-                {/* Subject Search / Add Bar */}
+                {/* Subject Search */}
                 <div className="relative mb-3">
                   <input
                     type="text"
                     value={subjectSearchQuery}
                     onChange={(e) => setSubjectSearchQuery(e.target.value)}
-                    placeholder="Search / Add Subject..."
+                    placeholder="Search Subject..."
                     className="w-full bg-slate-100 text-slate-800 text-xs py-2 pl-3 pr-8 rounded-xl outline-none font-medium border border-transparent focus:border-blue-400 focus:bg-white"
                   />
                   <div className="absolute right-2.5 top-2.5 text-slate-400">
@@ -958,7 +1064,7 @@ export default function AdminPanel() {
                             : "hover:bg-slate-50 text-slate-700 border border-transparent cursor-pointer"
                         }`}
                       >
-                        <span className="truncate mr-2 uppercase text-[11px] font-semibold">
+                        <span className="truncate mr-2 text-[11px] font-semibold">
                           {sub}
                         </span>
                         <input
@@ -974,11 +1080,11 @@ export default function AdminPanel() {
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-100 text-[10px] text-slate-400 leading-tight">
-                  🔒 Marks DB mein mojuud subjects locked hain. Naye check kiye gaye subjects <strong>{subjectPanelClass}</strong> ke har student ke result card par add rahenge.
+                  💡 <strong>Elective Note:</strong> Alternative subjects (e.g. <code>Math / Biology</code>) automatically align together into the same result card slot.
                 </div>
               </div>
 
-              {/* ================= SINGLE RESULT CARD (PRINTABLE) ================= */}
+              {/* SINGLE RESULT CARD */}
               <div className="bg-white w-[210mm] min-h-[297mm] p-10 border border-slate-200 shadow-xl rounded-sm print-area flex flex-col justify-between text-slate-800 select-text shrink-0">
                 <div>
                   {renderMasterHeader()}
@@ -1008,6 +1114,7 @@ export default function AdminPanel() {
                       </span>
                     </div>
                   </div>
+
                   <table className="w-full border border-slate-900 text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-100 font-black text-slate-800 uppercase border-b border-slate-900">
@@ -1063,7 +1170,13 @@ export default function AdminPanel() {
                             </td>
                             <td className="p-3 text-center">
                               <span
-                                className={`px-2 py-0.5 rounded font-black text-[10px] ${row.status === "PASS" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+                                className={`px-2 py-0.5 rounded font-black text-[10px] ${
+                                  row.status === "PASS"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : row.status === "FAIL"
+                                    ? "bg-rose-50 text-rose-700"
+                                    : "text-slate-400"
+                                }`}
                               >
                                 {row.status}
                               </span>
@@ -1089,7 +1202,9 @@ export default function AdminPanel() {
                         </td>
                         <td className="p-3 text-center">
                           <span
-                            className={`px-3 py-1 rounded font-black text-xs ${reportCard.status === "PASS" ? "text-emerald-600" : "text-rose-600"}`}
+                            className={`px-3 py-1 rounded font-black text-xs ${
+                              reportCard.status === "PASS" ? "text-emerald-600" : "text-rose-600"
+                            }`}
                           >
                             {reportCard.status} ({reportCard.perc}%)
                           </span>
@@ -1098,6 +1213,7 @@ export default function AdminPanel() {
                     </tbody>
                   </table>
                 </div>
+
                 <div className="mt-20 pt-6 flex items-end justify-between text-[11px] font-bold text-slate-700">
                   <div className="w-48 border-b border-dotted border-slate-400 pb-1">
                     REMARKS:{" "}
@@ -1107,7 +1223,6 @@ export default function AdminPanel() {
                   </div>
                 </div>
               </div>
-
             </div>
           )}
 
@@ -1213,7 +1328,13 @@ export default function AdminPanel() {
                                 </td>
                                 <td className="p-2 text-center">
                                   <span
-                                    className={`font-black ${row.status === "PASS" ? "text-emerald-600" : "text-rose-600"}`}
+                                    className={`font-black ${
+                                      row.status === "PASS"
+                                        ? "text-emerald-600"
+                                        : row.status === "FAIL"
+                                        ? "text-rose-600"
+                                        : "text-slate-400"
+                                    }`}
                                   >
                                     {row.status}
                                   </span>
@@ -1238,7 +1359,9 @@ export default function AdminPanel() {
                               </td>
                               <td className="p-2 text-center">
                                 <span
-                                  className={`font-black text-xs ${status === "PASS" ? "text-emerald-600" : "text-rose-600"}`}
+                                  className={`font-black text-xs ${
+                                    status === "PASS" ? "text-emerald-600" : "text-rose-600"
+                                  }`}
                                 >
                                   {status} ({perc}%)
                                 </span>
@@ -1278,7 +1401,13 @@ export default function AdminPanel() {
                     >
                       <div className="flex items-center space-x-6">
                         <span
-                          className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black border-2 ${idx === 0 ? "bg-amber-100 text-amber-700 border-amber-400" : idx === 1 ? "bg-slate-100 text-slate-700 border-slate-400" : "bg-orange-100 text-orange-700 border-orange-400"}`}
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black border-2 ${
+                            idx === 0
+                              ? "bg-amber-100 text-amber-700 border-amber-400"
+                              : idx === 1
+                              ? "bg-slate-100 text-slate-700 border-slate-400"
+                              : "bg-orange-100 text-orange-700 border-orange-400"
+                          }`}
                         >
                           {idx + 1}
                         </span>
@@ -1461,7 +1590,9 @@ export default function AdminPanel() {
                         </td>
                         <td className="p-2 text-center">
                           <span
-                            className={`font-black uppercase text-[10px] ${item.status === "PASS" ? "text-emerald-600" : "text-rose-600"}`}
+                            className={`font-black uppercase text-[10px] ${
+                              item.status === "PASS" ? "text-emerald-600" : "text-rose-600"
+                            }`}
                           >
                             {item.status}
                           </span>
@@ -1489,7 +1620,7 @@ export default function AdminPanel() {
         </main>
       </div>
 
-      {/* RIGHT SIDEBAR */}
+      {/* RIGHT SIDEBAR: REPORTING PANEL */}
       {showRightSidebar && (
         <aside className="w-72 bg-white border-l border-slate-200 flex flex-col h-full shrink-0 shadow-lg no-print">
           <div className="bg-[#22c55e] text-white p-3.5 flex items-center justify-end space-x-2 shadow-sm shrink-0">
@@ -1529,7 +1660,11 @@ export default function AdminPanel() {
                     <button
                       key={i}
                       onClick={() => toggleRound(r)}
-                      className={`py-2 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${isActive ? "bg-[#1e3a8a] text-white border-[#1e3a8a] shadow-md" : "bg-slate-200/50 text-slate-400 border-transparent hover:bg-slate-200"}`}
+                      className={`py-2 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-[#1e3a8a] text-white border-[#1e3a8a] shadow-md"
+                          : "bg-slate-200/50 text-slate-400 border-transparent hover:bg-slate-200"
+                      }`}
                     >
                       {r}
                     </button>
@@ -1557,7 +1692,11 @@ export default function AdminPanel() {
             <div className="space-y-2.5 pt-2 border-b border-slate-100 pb-4">
               <button
                 onClick={() => setActiveReportMode("bulk")}
-                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${activeReportMode === "bulk" ? "bg-blue-900 text-white" : "bg-[#1e3a8a] text-white hover:bg-blue-800"}`}
+                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${
+                  activeReportMode === "bulk"
+                    ? "bg-blue-900 text-white"
+                    : "bg-[#1e3a8a] text-white hover:bg-blue-800"
+                }`}
               >
                 <div className="flex items-center space-x-2">
                   <Printer className="w-4 h-4" />
@@ -1566,7 +1705,11 @@ export default function AdminPanel() {
               </button>
               <button
                 onClick={() => setActiveReportMode("positions")}
-                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${activeReportMode === "positions" ? "bg-amber-600 text-white" : "bg-[#f59e0b] text-white hover:bg-amber-600"}`}
+                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${
+                  activeReportMode === "positions"
+                    ? "bg-amber-600 text-white"
+                    : "bg-[#f59e0b] text-white hover:bg-amber-600"
+                }`}
               >
                 <div className="flex items-center space-x-2">
                   <Trophy className="w-4 h-4" />
@@ -1575,7 +1718,11 @@ export default function AdminPanel() {
               </button>
               <button
                 onClick={() => setActiveReportMode("summary")}
-                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${activeReportMode === "summary" ? "bg-purple-800 text-white" : "bg-[#a855f7] text-white hover:bg-purple-600"}`}
+                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${
+                  activeReportMode === "summary"
+                    ? "bg-purple-800 text-white"
+                    : "bg-[#a855f7] text-white hover:bg-purple-600"
+                }`}
               >
                 <div className="flex items-center space-x-2">
                   <FileText className="w-4 h-4" />
@@ -1584,7 +1731,11 @@ export default function AdminPanel() {
               </button>
               <button
                 onClick={() => setActiveReportMode("gazette")}
-                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${activeReportMode === "gazette" ? "bg-slate-900 text-white" : "bg-[#0f172a] text-white hover:bg-slate-800"}`}
+                className={`w-full flex items-center justify-between py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer ${
+                  activeReportMode === "gazette"
+                    ? "bg-slate-900 text-white"
+                    : "bg-[#0f172a] text-white hover:bg-slate-800"
+                }`}
               >
                 <div className="flex items-center space-x-2">
                   <ClipboardList className="w-4 h-4" />
@@ -1785,7 +1936,11 @@ export default function AdminPanel() {
                     Assigned Roll No.
                   </label>
                   <div
-                    className={`w-full text-sm py-2 px-3.5 rounded-xl font-mono font-bold border flex items-center justify-between ${calculatedRollNo ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-400 border-transparent"}`}
+                    className={`w-full text-sm py-2 px-3.5 rounded-xl font-mono font-bold border flex items-center justify-between ${
+                      calculatedRollNo
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-slate-100 text-slate-400 border-transparent"
+                    }`}
                   >
                     <span>{calculatedRollNo || "Select Class first"}</span>
                     {calculatedRollNo && (
@@ -1844,49 +1999,28 @@ export default function AdminPanel() {
                   Required Excel Format Preview:
                 </h4>
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Top headers bilkul is tarah rakhein. Roll numbers auto allot
-                  ho jayenge.
+                  Top headers bilkul is tarah rakhein. Roll numbers auto allot ho jayenge.
                 </p>
                 <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50">
                   <table className="w-full text-left border-collapse text-[11px]">
                     <thead>
                       <tr className="bg-slate-200/70 text-slate-700 font-bold border-b border-slate-300">
-                        <th className="p-2 border-r border-slate-200">
-                          FirstName
-                        </th>
-                        <th className="p-2 border-r border-slate-200">
-                          LastName
-                        </th>
-                        <th className="p-2 border-r border-slate-200">
-                          FatherName
-                        </th>
-                        <th className="p-2 border-r border-slate-200">
-                          FatherPhone
-                        </th>
+                        <th className="p-2 border-r border-slate-200">FirstName</th>
+                        <th className="p-2 border-r border-slate-200">LastName</th>
+                        <th className="p-2 border-r border-slate-200">FatherName</th>
+                        <th className="p-2 border-r border-slate-200">FatherPhone</th>
                         <th className="p-2 border-r border-slate-200">DOB</th>
                         <th className="p-2">Class</th>
                       </tr>
                     </thead>
                     <tbody className="text-slate-500 font-medium">
                       <tr className="border-b border-slate-200">
-                        <td className="p-2 border-r border-slate-200 bg-white">
-                          Zainab
-                        </td>
-                        <td className="p-2 border-r border-slate-200 bg-white">
-                          Ali
-                        </td>
-                        <td className="p-2 border-r border-slate-200 bg-white">
-                          Muhammad Ali
-                        </td>
-                        <td className="p-2 border-r border-slate-200 bg-white">
-                          03217654321
-                        </td>
-                        <td className="p-2 border-r border-slate-200 bg-white">
-                          2009-04-14
-                        </td>
-                        <td className="p-2 bg-white font-bold text-blue-800">
-                          9th
-                        </td>
+                        <td className="p-2 border-r border-slate-200 bg-white">Zainab</td>
+                        <td className="p-2 border-r border-slate-200 bg-white">Ali</td>
+                        <td className="p-2 border-r border-slate-200 bg-white">Muhammad Ali</td>
+                        <td className="p-2 border-r border-slate-200 bg-white">03217654321</td>
+                        <td className="p-2 border-r border-slate-200 bg-white">2009-04-14</td>
+                        <td className="p-2 bg-white font-bold text-blue-800">9th</td>
                       </tr>
                     </tbody>
                   </table>
